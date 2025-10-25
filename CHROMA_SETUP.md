@@ -33,19 +33,21 @@ Create a `.env.local` file in the project root:
 
 ```bash
 # Chroma Cloud Configuration
-CHROMA_API_KEY=ck-GkMoM4DAMuaqWzLKAc7AmMp9tw9ogLcgEYpLFBdYorF9
-CHROMA_TENANT=29001fa2-0596-4474-9a8a-bc95a0919a7a
-CHROMA_DATABASE=calhacks-2025
+CHROMA_API_KEY=your-chroma-api-key-here
+CHROMA_TENANT=your-tenant-id-here
+CHROMA_DATABASE=your-database-name-here
 ```
 
 ### 2. Chroma Cloud Setup
 
-The application is pre-configured with your Chroma Cloud credentials:
-- **API Key**: `ck-GkMoM4DAMuaqWzLKAc7AmMp9tw9ogLcgEYpLFBdYorF9`
-- **Tenant**: `29001fa2-0596-4474-9a8a-bc95a0919a7a`
-- **Database**: `calhacks-2025`
+1. Sign up for Chroma Cloud at https://cloud.trychroma.com/
+2. Create a new project and get your credentials:
+   - **API Key**: Found in your project dashboard
+   - **Tenant ID**: Your organization/tenant identifier
+   - **Database Name**: Your database name (e.g., `my-content-db`)
+3. Update your `.env.local` file with your actual credentials
 
-**Note**: The credentials are already configured in the code. You can override them by setting environment variables in `.env.local` if needed.
+**Note**: The application will use environment variables if provided, otherwise it will use the default values configured in the code.
 
 ### 4. Start the Application
 
@@ -116,13 +118,12 @@ src/
 
 The Chroma Cloud client is configured in `src/lib/chroma.ts`. The configuration includes:
 
-- **API Key**: `ck-GkMoM4DAMuaqWzLKAc7AmMp9tw9ogLcgEYpLFBdYorF9`
-- **Tenant**: `29001fa2-0596-4474-9a8a-bc95a0919a7a`
-- **Database**: `calhacks-2025`
 - **Environment Variables**: 
   - `CHROMA_API_KEY`: Your Chroma Cloud API key
   - `CHROMA_TENANT`: Your Chroma Cloud tenant ID
   - `CHROMA_DATABASE`: Your Chroma Cloud database name
+
+**Default Configuration**: The application includes default values for development, but you should always use environment variables for production.
 
 You can modify the configuration to:
 - Use different credentials via environment variables
