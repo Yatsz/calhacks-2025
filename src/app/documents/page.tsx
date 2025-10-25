@@ -158,6 +158,12 @@ export default function DocumentsPage() {
           >
             ← Back to Chat
           </Link>
+          <Link 
+            href="/adintelligence" 
+            className="text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300 font-medium px-4 py-2 rounded-lg border border-purple-200 dark:border-purple-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
+          >
+            AdIntelligence
+          </Link>
         </div>
 
         <h1 className="text-3xl font-bold text-center mb-8 text-black dark:text-white">
