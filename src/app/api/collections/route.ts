@@ -27,7 +27,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, metadata } = body;
+    const { name, metadata, contentType } = body;
 
     if (!name) {
       return NextResponse.json(
@@ -36,7 +36,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await chromaService.createCollection(name, metadata);
+    // Validate content type if provided
+    const validContentTypes = ["inspiration", "past-work", "current-work"];
+    if (contentType && !validContentTypes.includes(contentType)) {
+      return NextResponse.json(
+        {
+          error: `Invalid content type. Must be one of: ${validContentTypes.join(
+            ", "
+          )}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Add content type to metadata
+    const collectionMetadata = {
+      ...metadata,
+      contentType: contentType || "general",
+      createdAt: new Date().toISOString(),
+    };
+
+    const result = await chromaService.createCollection(
+      name,
+      collectionMetadata
+    );
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 500 });

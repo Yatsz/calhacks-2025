@@ -1,29 +1,24 @@
-# Chroma Cloud Client Setup
+# B2C Content Management System
 
-This Next.js application includes a complete Chroma cloud client implementation with collection management, document operations, and querying capabilities.
+This Next.js application provides a user-scoped content management system using Chroma Cloud for vector storage and semantic search. Each user has their own collection for complete data isolation and privacy.
 
 ## Features
 
-- ✅ **Collection Management**: Create, list, and delete collections
-- ✅ **Document Operations**: Add documents to collections with metadata
-- ✅ **Query Functionality**: Search and retrieve documents from collections
-- ✅ **Web Interface**: Interactive UI for testing all operations
-- ✅ **API Endpoints**: RESTful API for all Chroma operations
+- ✅ **User-Scoped Collections**: Each user gets their own collection (user_123)
+- ✅ **Content Type Management**: Inspiration, past-work, and current-work content
+- ✅ **Semantic Search**: Vector-based search within user's collection
+- ✅ **Privacy First**: Complete user data isolation
+- ✅ **GDPR Compliance**: Easy user data deletion
+- ✅ **API Endpoints**: RESTful API for user content operations
 
-## API Endpoints
+## API Documentation
 
-### Collections
-- `GET /api/collections` - List all collections
-- `POST /api/collections` - Create a new collection
-- `GET /api/collections/[name]` - Get a specific collection
-- `DELETE /api/collections/[name]` - Delete a collection
+For complete API documentation, see [API_DOCUMENTATION.md](./API_DOCUMENTATION.md).
 
-### Documents
-- `POST /api/collections/[name]/documents` - Add documents to a collection
-- `GET /api/collections/[name]/documents` - Get all documents from a collection
-
-### Query
-- `POST /api/collections/[name]/query` - Query documents in a collection
+**Key Endpoints:**
+- `GET /api/user-content` - Get user's content
+- `POST /api/user-content` - Add content to user's collection
+- `DELETE /api/user-content` - Delete user's collection (GDPR)
 
 ## Setup Instructions
 
@@ -59,40 +54,29 @@ Visit `http://localhost:3000` to access the web interface.
 
 ## Usage Examples
 
-### Create a Collection
+### Add User Content
 ```javascript
-const response = await fetch('/api/collections', {
+const response = await fetch('/api/user-content', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    name: 'my-collection',
-    metadata: { description: 'My test collection' }
+    userId: '123',
+    content: 'Beautiful sunset photography techniques',
+    contentType: 'inspiration',
+    title: 'Sunset Photography',
+    tags: ['photography', 'nature']
   })
 });
 ```
 
-### Add Documents
+### Search User Content
 ```javascript
-const response = await fetch('/api/collections/my-collection/documents', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    documents: ['Document 1', 'Document 2'],
-    metadatas: [{ source: 'web' }, { source: 'pdf' }]
-  })
-});
+const response = await fetch('/api/user-content?userId=123&q=photography&type=inspiration');
 ```
 
-### Query Collection
+### Get User Content
 ```javascript
-const response = await fetch('/api/collections/my-collection/query', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    queryTexts: ['search query'],
-    nResults: 5
-  })
-});
+const response = await fetch('/api/user-content?userId=123');
 ```
 
 ## File Structure
@@ -103,6 +87,8 @@ src/
 │   └── chroma.ts              # Chroma client configuration and service
 ├── app/
 │   ├── api/
+│   │   ├── user-content/
+│   │   │   └── route.ts       # User content management
 │   │   └── collections/
 │   │       ├── route.ts       # Collection CRUD operations
 │   │       └── [name]/
@@ -111,7 +97,9 @@ src/
 │   │           │   └── route.ts # Document operations
 │   │           └── query/
 │   │               └── route.ts # Query operations
-│   └── page.tsx               # Web interface
+│   ├── api-docs/
+│   │   └── page.tsx           # API documentation
+│   └── page.tsx              # Chat interface
 ```
 
 ## Configuration
