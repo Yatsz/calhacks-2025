@@ -60,7 +60,7 @@ export async function executeSocialAction(
             caption: action.content,
             image_url: action.media,
             media_type: 'IMAGE'
-          });
+          }); 
           
           // Step 1: Create media container
           const mediaResult = await composio.actions.execute({
