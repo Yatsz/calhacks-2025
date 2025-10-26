@@ -35,6 +35,12 @@ export async function POST(req: Request) {
     const body = await req.json();
     const messages = body.messages as UIMessage[];
 
+    // Check if this is a competitor analysis request
+    const analysisResponse = await tryHandleCompetitorAnalysis(messages);
+    if (analysisResponse) {
+      return analysisResponse;
+    }
+
     // Extract metadata from the last user message
     let campaignContext: { id: string; caption: string; media: { type: "image" | "video"; url: string; name?: string } | null } | undefined;
     let model: string | undefined;
