@@ -26,7 +26,6 @@ const contentTypes = [
   { id: "library", label: "Content Library", color: "#3FB855" },
 ];
 
-const CHAT_WIDTH_STORAGE_KEY = "adintelligence-chat-width";
 const DEFAULT_CHAT_WIDTH = 320;
 const MIN_CHAT_WIDTH = 260;
 const MAX_CHAT_WIDTH = 640;
@@ -52,20 +51,7 @@ export default function AdIntelligencePage() {
     return Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, available));
   };
 
-  const [chatPanelWidth, setChatPanelWidth] = useState<number>(() => {
-    if (typeof window !== "undefined") {
-      const stored = window.localStorage.getItem(CHAT_WIDTH_STORAGE_KEY);
-      const parsed = stored ? parseInt(stored, 10) : NaN;
-      if (!Number.isNaN(parsed)) {
-        const maxWidth = Math.max(
-          MIN_CHAT_WIDTH,
-          Math.min(MAX_CHAT_WIDTH, parsed)
-        );
-        return maxWidth;
-      }
-    }
-    return DEFAULT_CHAT_WIDTH;
-  });
+  const [chatPanelWidth, setChatPanelWidth] = useState<number>();
   const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(
     null
   );
@@ -94,21 +80,10 @@ export default function AdIntelligencePage() {
   }, [editingCampaignId]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        CHAT_WIDTH_STORAGE_KEY,
-        String(Math.round(chatPanelWidth))
-      );
-    }
-  }, [chatPanelWidth]);
-
-  useEffect(() => {
     if (typeof window === "undefined") return;
     const handleResize = () => {
       const maxWidth = computeMaxChatWidth();
-      setChatPanelWidth((prev) =>
-        Math.min(Math.max(prev, MIN_CHAT_WIDTH), maxWidth)
-      );
+      setChatPanelWidth((prev) => Math.min(prev ?? MIN_CHAT_WIDTH, maxWidth));
     };
     window.addEventListener("resize", handleResize);
     handleResize();
@@ -161,7 +136,7 @@ export default function AdIntelligencePage() {
     event.preventDefault();
     resizeStateRef.current = {
       startX: event.clientX,
-      startWidth: chatPanelWidth,
+      startWidth: chatPanelWidth ?? DEFAULT_CHAT_WIDTH,
     };
     setIsResizing(true);
     document.body.classList.add("select-none", "cursor-col-resize");
@@ -281,7 +256,11 @@ export default function AdIntelligencePage() {
           {/* Center & Right Panels */}
           <div className="flex flex-1 gap-3 items-stretch">
             <div className="flex-1 overflow-auto">
-              <CampaignEditor editingCampaignId={editingCampaignId} />
+              <CampaignEditor
+                campaignContext={campaignContext}
+                setCampaignContext={setCampaignContext}
+                editingCampaignId={editingCampaignId}
+              />
             </div>
             <div
               className={`relative w-2 flex-shrink-0 cursor-col-resize rounded-full bg-white/40 transition-colors ${
@@ -304,7 +283,10 @@ export default function AdIntelligencePage() {
                 flexBasis: chatPanelWidth,
               }}
             >
-              <ChatbotPanel campaignContext={campaignContext} />
+              <ChatbotPanel
+                campaignContext={campaignContext}
+                onCampaignContextUpdate={setCampaignContext}
+              />
             </div>
           </div>
         </div>
