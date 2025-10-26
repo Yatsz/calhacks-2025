@@ -25,11 +25,8 @@ interface ContentSectionProps {
   color: string;
   showMediaOnly: boolean;
   onContentClick: (content: ContentItem) => void;
-  items: ContentItem[];
-  onItemsChange: (items: ContentItem[]) => void;
 }
 
-export function ContentSection({ title, color, showMediaOnly, onContentClick, items, onItemsChange }: ContentSectionProps) {
 export function ContentSection({ title, color, showMediaOnly, onContentClick }: ContentSectionProps) {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -81,11 +78,6 @@ export function ContentSection({ title, color, showMediaOnly, onContentClick }: 
     }
   }, [storageKey, isPastCampaigns]);
 
-    onItemsChange([...items, ...newItems]);
-  };
-
-  const handleDelete = (id: string) => {
-    onItemsChange(items.filter((item) => item.id !== id));
   // Save to localStorage whenever items change (but not for Past Campaigns since they sync from campaigns)
   useEffect(() => {
     if (!isPastCampaigns && items.length > 0) {

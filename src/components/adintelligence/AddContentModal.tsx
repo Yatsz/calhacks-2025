@@ -28,6 +28,7 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
   const [linkInput, setLinkInput] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [campaignCaption, setCampaignCaption] = useState("");
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const contentTypes = [
     {
@@ -48,7 +49,7 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
       id: "link" as ContentType,
       icon: LinkIcon,
       title: "Link",
-      description: "Instagram or YouTube link",
+      description: "TikTok, Instagram or YouTube link",
       color: "#3FB855",
     },
     {
@@ -118,7 +119,7 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (selectedType === "text" && textInput.trim()) {
       onAdd({
         type: "text",
@@ -127,13 +128,49 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
       });
       handleClose();
     } else if (selectedType === "link" && linkInput.trim()) {
-      onAdd({
-        type: "link" as any,
-        name: nameInput || "Link Content",
-        url: linkInput,
-        text: linkInput,
-      });
-      handleClose();
+      // Check if it's a TikTok link
+      if (linkInput.includes("tiktok.com")) {
+        setIsDownloading(true);
+        try {
+          const response = await fetch("/api/download-video", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ url: linkInput }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            alert(data.error || "Failed to download TikTok video");
+            setIsDownloading(false);
+            return;
+          }
+
+          // Add the downloaded video
+          onAdd({
+            type: "video",
+            name: nameInput || data.filename,
+            url: data.videoUrl,
+            thumbnail: data.thumbnail || data.videoUrl,
+          });
+          handleClose();
+        } catch (error) {
+          console.error("Error downloading TikTok video:", error);
+          alert("Failed to download TikTok video. Please try again.");
+          setIsDownloading(false);
+        }
+      } else {
+        // For non-TikTok links, just store the link
+        onAdd({
+          type: "link" as any,
+          name: nameInput || "Link Content",
+          url: linkInput,
+          text: linkInput,
+        });
+        handleClose();
+      }
     } else if (selectedType === "campaign") {
       onAdd({
         type: "campaign" as any,
@@ -150,6 +187,7 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
     setLinkInput("");
     setNameInput("");
     setCampaignCaption("");
+    setIsDownloading(false);
     onClose();
   };
 
@@ -263,12 +301,20 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
                     id="link"
                     value={linkInput}
                     onChange={(e) => setLinkInput(e.target.value)}
-                    placeholder="https://instagram.com/... or https://youtube.com/..."
+                    placeholder="https://tiktok.com/... or https://instagram.com/..."
                     className="mt-2 backdrop-blur-xl bg-white/70 border-white/80 text-gray-900"
+                    disabled={isDownloading}
                   />
                 </div>
                 <p className="text-sm text-gray-600">
-                  Paste an Instagram or YouTube link to analyze
+                  {isDownloading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="inline-block w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                      Downloading TikTok video...
+                    </span>
+                  ) : (
+                    "Paste a TikTok link to download, or Instagram/YouTube to save"
+                  )}
                 </p>
               </div>
             )}
@@ -316,11 +362,19 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
                   onClick={handleSubmit}
                   className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
                   disabled={
+                    isDownloading ||
                     (selectedType === "text" && !textInput.trim()) ||
                     (selectedType === "link" && !linkInput.trim())
                   }
                 >
-                  Add Content
+                  {isDownloading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Downloading...
+                    </span>
+                  ) : (
+                    "Add Content"
+                  )}
                 </Button>
               </div>
             )}
