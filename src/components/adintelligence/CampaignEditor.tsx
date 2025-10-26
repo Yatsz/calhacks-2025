@@ -19,46 +19,68 @@ interface Campaign {
 }
 
 interface CampaignEditorProps {
+  campaignContext?: {
+    id: string;
+    caption: string;
+    media: { type: "image" | "video"; url: string; name?: string } | null;
+  } | null;
+  setCampaignContext: (
+    campaignContext: {
+      id: string;
+      caption: string;
+      media: { type: "image" | "video"; url: string; name?: string } | null;
+    } | null
+  ) => void;
   editingCampaignId?: string | null;
 }
 
-export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
+export function CampaignEditor({
+  campaignContext,
+  setCampaignContext,
+  editingCampaignId,
+}: CampaignEditorProps) {
   const router = useRouter();
   const [isDragging, setIsDragging] = useState(false);
-  const [currentCampaignId, setCurrentCampaignId] = useState<string | null>(null);
-  const [media, setMedia] = useState<{ type: "image" | "video"; url: string; name?: string } | null>(null);
-  const [caption, setCaption] = useState<string>("");
+  const [currentCampaignId, setCurrentCampaignId] = useState<string | null>(
+    null
+  );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Load campaign when editingCampaignId changes
   const loadCampaign = useCallback(async () => {
-    if (editingCampaignId && typeof window !== 'undefined') {
+    if (editingCampaignId && typeof window !== "undefined") {
       setLoading(true);
       try {
         const campaign = await getCampaignById(editingCampaignId);
         if (campaign) {
           setTimeout(() => {
-            setMedia(campaign.media);
-            setCaption(campaign.caption);
+            setCampaignContext({
+              id: campaign.id,
+              caption: campaign.caption,
+              media: campaign.media,
+            });
             setCurrentCampaignId(campaign.id);
           }, 0);
         }
       } catch (error) {
-        console.error('Error loading campaign:', error);
-        toast.error('Failed to load campaign');
+        console.error("Error loading campaign:", error);
+        toast.error("Failed to load campaign");
       } finally {
         setLoading(false);
       }
     } else {
       // Reset for new campaign
       setTimeout(() => {
-        setMedia(null);
-        setCaption("");
+        setCampaignContext({
+          id: "",
+          caption: "",
+          media: null,
+        });
         setCurrentCampaignId(null);
       }, 0);
     }
-  }, [editingCampaignId]);
+  }, [editingCampaignId, setCampaignContext]);
 
   useEffect(() => {
     loadCampaign();
@@ -77,11 +99,11 @@ export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
-    const data = e.dataTransfer.getData('content-item');
+
+    const data = e.dataTransfer.getData("content-item");
     if (data) {
       const item = JSON.parse(data);
-      
+
       // Check if it's a campaign being dragged (from Past Campaigns)
       if (item.text && item.text.length > 50) {
         // It's likely a campaign - load the full campaign from database
@@ -90,29 +112,41 @@ export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
           const campaign = campaigns.find((c: Campaign) => c.id === item.id);
           if (campaign) {
             // Replace the entire campaign
-            setMedia(campaign.media);
-            setCaption(campaign.caption);
+            setCampaignContext({
+              id: campaign.id,
+              caption: campaign.caption,
+              media: campaign.media,
+            });
             setCurrentCampaignId(null); // Create as new campaign, not edit
             return;
           }
         } catch (error) {
-          console.error('Error loading campaign for drag:', error);
+          console.error("Error loading campaign for drag:", error);
         }
       }
-      
+
       // Regular media item
-      if (item.type === 'image' || item.type === 'video') {
-        setMedia({
-          type: item.type,
-          url: item.url || item.thumbnail || '',
-          name: item.name
+      if (item.type === "image" || item.type === "video") {
+        setCampaignContext({
+          id: campaignContext?.id ?? currentCampaignId ?? "",
+          caption: campaignContext?.caption ?? "",
+          media: {
+            type: item.type,
+            url: item.url || item.thumbnail || "",
+            name: item.name,
+          },
         });
       }
     }
   };
 
+  const currentCaption = campaignContext?.caption ?? "";
+  const currentMedia = campaignContext?.media ?? null;
+
   const handleSaveCampaign = async () => {
-    if (!media && !caption.trim()) {
+    const captionForSave = currentCaption;
+    const mediaForSave = currentMedia;
+    if (!mediaForSave && captionForSave.trim().length === 0) {
       toast.error("Please add media or caption before saving");
       return;
     }
@@ -122,24 +156,24 @@ export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
       if (currentCampaignId) {
         // Update existing campaign
         await updateCampaign(currentCampaignId, {
-          caption,
-          media,
+          caption: captionForSave,
+          media: mediaForSave,
         });
         toast.success("Campaign updated successfully!");
       } else {
         // Create new campaign
         await createCampaign({
-          caption,
-          media,
+          caption: captionForSave,
+          media: mediaForSave,
         });
         toast.success("Campaign saved successfully!");
       }
 
       // Navigate to campaigns page
-      router.push('/campaigns');
+      router.push("/campaigns");
     } catch (error) {
-      console.error('Error saving campaign:', error);
-      toast.error('Failed to save campaign. Please try again.');
+      console.error("Error saving campaign:", error);
+      toast.error("Failed to save campaign. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -158,24 +192,26 @@ export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
         ) : (
           <div className="backdrop-blur-2xl bg-white/40 rounded-3xl border border-white/50 shadow-2xl overflow-hidden">
             {/* Media Section */}
-            <div 
-              className={`relative backdrop-blur-xl ${isDragging ? 'bg-white/40' : 'bg-white/20'} transition-colors`}
+            <div
+              className={`relative backdrop-blur-xl ${
+                isDragging ? "bg-white/40" : "bg-white/20"
+              } transition-colors`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
-              {media ? (
+              {currentMedia ? (
                 <div className="relative aspect-square">
-                  {media.type === "image" ? (
+                  {currentMedia.type === "image" ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={media.url}
-                      alt={media.name || "Campaign media"}
+                      src={currentMedia.url}
+                      alt={currentMedia.name || "Campaign media"}
                       className="w-full h-full object-cover"
                     />
                   ) : (
                     <video
-                      src={media.url}
+                      src={currentMedia.url}
                       controls
                       className="w-full h-full object-cover bg-black"
                     />
@@ -188,8 +224,12 @@ export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
                       <ImageIcon className="w-6 h-6 text-gray-700" />
                     </div>
                     <div className="text-center">
-                      <p className="text-sm text-gray-900 font-medium">Empty Media</p>
-                      <p className="text-xs text-gray-600 mt-1">Drag from content library</p>
+                      <p className="text-sm text-gray-900 font-medium">
+                        Empty Media
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Drag from content library
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -200,15 +240,21 @@ export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
             <div className="p-6 space-y-4 backdrop-blur-xl bg-white/30 border-t-2 border-white/40">
               <div className="space-y-2">
                 <Textarea
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
+                  value={currentCaption}
+                  onChange={(e) =>
+                    setCampaignContext({
+                      id: campaignContext?.id ?? currentCampaignId ?? "",
+                      caption: e.target.value,
+                      media: currentMedia,
+                    })
+                  }
                   placeholder="Write your campaign caption..."
                   className="min-h-[100px] resize-none backdrop-blur-xl bg-white/70 border-2 border-white/80 text-gray-900 placeholder:text-gray-500 shadow-sm focus:bg-white focus:border-gray-300"
                   disabled={saving}
                 />
               </div>
 
-              <Button 
+              <Button
                 onClick={handleSaveCampaign}
                 className="w-full bg-gray-900 hover:bg-gray-800 shadow-lg text-white"
                 disabled={saving}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
   Send,
@@ -76,6 +76,11 @@ interface ChatbotPanelProps {
     caption: string;
     media: CampaignMedia | null;
   } | null;
+  onCampaignContextUpdate?: (context: {
+    id: string;
+    caption: string;
+    media: CampaignMedia | null;
+  }) => void;
 }
 
 interface SocialAction {
@@ -85,9 +90,10 @@ interface SocialAction {
   media?: string;
 }
 
-interface ActionState {
-  action: SocialAction;
-  status: "pending" | "executing" | "success" | "error";
+type SocialActionStatus = "pending" | "executing" | "success" | "error";
+
+interface SocialActionState {
+  status: SocialActionStatus;
   message?: string;
 }
 
@@ -164,15 +170,60 @@ const shouldHideUserMessageText = (text: string, raw?: string) => {
   return false;
 };
 
-// Parse action blocks from AI responses
+const ACTION_COMMENT_REGEX = /<!--SOCIAL_ACTION:([\s\S]*?)-->/g;
+
 const parseActionFromText = (text: string): SocialAction | null => {
-  const actionMatch = text.match(/```action\n([\s\S]*?)\n```/);
-  if (actionMatch) {
+  const commentMatch = text.match(/<!--SOCIAL_ACTION:([\s\S]*?)-->/);
+  if (commentMatch) {
     try {
-      return JSON.parse(actionMatch[1]);
+      return JSON.parse(commentMatch[1]);
+    } catch (error) {
+      console.error("Failed to parse social action comment:", error);
+      return null;
+    }
+  }
+
+  const codeMatch = text.match(/```action\n([\s\S]*?)\n```/);
+  if (codeMatch) {
+    try {
+      return JSON.parse(codeMatch[1]);
     } catch (error) {
       console.error("Failed to parse action:", error);
       return null;
+    }
+  }
+  return null;
+};
+
+const stripActionBlocks = (text: string) =>
+  text
+    .replace(ACTION_COMMENT_REGEX, "")
+    .replace(/\n{3,}/g, "\n\n");
+
+const buildSocialActionKey = (messageId: string, action: SocialAction) =>
+  `${messageId}:${JSON.stringify(action)}`;
+
+const normalizeCampaignMedia = (media: unknown): CampaignMedia | null => {
+  if (
+    media &&
+    typeof media === "object" &&
+    "type" in media &&
+    "url" in media &&
+    typeof (media as { type?: unknown }).type === "string" &&
+    typeof (media as { url?: unknown }).url === "string"
+  ) {
+    const type = (media as { type: string }).type;
+    const url = (media as { url: string }).url;
+    if ((type === "image" || type === "video") && url.length > 0) {
+      const name =
+        typeof (media as { name?: unknown }).name === "string"
+          ? ((media as { name: string }).name as string)
+          : undefined;
+      return {
+        type,
+        url,
+        name,
+      };
     }
   }
   return null;
@@ -221,71 +272,195 @@ function formatGeneratedLabel(timestamp: string) {
 /*****************
  * Components
  *****************/
-function ToolCallApproval({
-  toolCall,
-  onApprove,
-  onReject,
-}: {
-  toolCall: ToolCallPart;
-  onApprove: () => void;
-  onReject: () => void;
-}) {
-  console.log("🎨 [ToolCallApproval] Rendering with toolCall:", toolCall);
-  console.log(
-    "🎨 [ToolCallApproval] requiresApproval:",
-    toolCall.output && typeof toolCall.output === "object"
-      ? (toolCall.output as Record<string, unknown>)?.requiresApproval
-      : undefined
-  );
+function ActionApprovalCard(
+  props:
+    | {
+        variant: "tool";
+        toolCall: ToolCallPart;
+        onApprove: () => void;
+        onReject: () => void;
+      }
+    | {
+        variant: "social";
+        action: SocialAction;
+        status: SocialActionStatus;
+        statusMessage?: string;
+        onApprove: () => void;
+        onReject: () => void;
+      }
+) {
+  if (props.variant === "tool") {
+    const { toolCall, onApprove, onReject } = props;
 
-  if (
-    toolCall.state !== "output-available" ||
-    !toolCall.output ||
-    typeof toolCall.output !== "object" ||
-    !(toolCall.output as { requiresApproval?: boolean }).requiresApproval
-  ) {
-    console.log("⚠️ [ToolCallApproval] Not rendering - no approval required");
-    return null;
+    console.log("🎨 [ActionApprovalCard] Rendering tool call:", toolCall);
+    console.log(
+      "🎨 [ActionApprovalCard] requiresApproval:",
+      toolCall.output && typeof toolCall.output === "object"
+        ? (toolCall.output as Record<string, unknown>)?.requiresApproval
+        : undefined
+    );
+
+    if (
+      toolCall.state !== "output-available" ||
+      !toolCall.output ||
+      typeof toolCall.output !== "object" ||
+      !(toolCall.output as { requiresApproval?: boolean }).requiresApproval
+    ) {
+      console.log(
+        "⚠️ [ActionApprovalCard] Not rendering - no approval required"
+      );
+      return null;
+    }
+
+    const output = toolCall.output as {
+      requiresApproval?: boolean;
+      parameters?: Record<string, unknown>;
+      message?: string;
+    };
+    const inputParams =
+      toolCall.input && typeof toolCall.input === "object"
+        ? (toolCall.input as Record<string, unknown>)
+        : undefined;
+    const params = output.parameters || inputParams || {};
+    const caption = params.caption as string | undefined;
+
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-amber-600 font-semibold">
+              Campaign Update Request
+            </p>
+            <h4 className="mt-1 text-sm font-semibold text-gray-900">
+              Approve this change?
+            </h4>
+          </div>
+          <Badge
+            variant="outline"
+            className="border-amber-200 bg-amber-100 text-amber-700"
+          >
+            Pending
+          </Badge>
+        </div>
+
+        {caption && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-white/60 p-3">
+            <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">
+              New Caption
+            </p>
+            <div className="text-sm text-gray-900 whitespace-pre-wrap max-h-32 overflow-y-auto pr-1">
+              {caption}
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Button
+            onClick={onApprove}
+            size="sm"
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            Accept
+          </Button>
+          <Button
+            onClick={onReject}
+            size="sm"
+            variant="outline"
+            className="border-red-200 text-red-700 hover:bg-red-50"
+          >
+            Reject
+          </Button>
+        </div>
+      </div>
+    );
   }
 
-  const output = toolCall.output as {
-    requiresApproval?: boolean;
-    parameters?: Record<string, unknown>;
-    message?: string;
+  const { action, status, statusMessage, onApprove, onReject } = props;
+
+  const statusMeta: Record<
+    SocialActionStatus,
+    { badgeClass: string; cardClass: string; label: string; accent: string }
+  > = {
+    pending: {
+      badgeClass: "border-amber-200 bg-amber-100 text-amber-700",
+      cardClass: "border-amber-200 bg-amber-50/70",
+      label: "Pending",
+      accent: "text-amber-600",
+    },
+    executing: {
+      badgeClass: "border-blue-200 bg-blue-100 text-blue-700",
+      cardClass: "border-blue-200 bg-blue-50/70",
+      label: "Posting",
+      accent: "text-blue-600",
+    },
+    success: {
+      badgeClass: "border-green-200 bg-green-100 text-green-700",
+      cardClass: "border-green-200 bg-green-50/70",
+      label: "Posted",
+      accent: "text-green-600",
+    },
+    error: {
+      badgeClass: "border-red-200 bg-red-100 text-red-700",
+      cardClass: "border-red-200 bg-red-50/70",
+      label: "Error",
+      accent: "text-red-600",
+    },
   };
-  const inputParams =
-    toolCall.input && typeof toolCall.input === "object"
-      ? (toolCall.input as Record<string, unknown>)
-      : undefined;
-  const params = output.parameters || inputParams || {};
-  const caption = params.caption as string | undefined;
+
+  const { badgeClass, cardClass, label, accent } = statusMeta[status];
+  const acceptLabel =
+    status === "success"
+      ? "Accepted"
+      : status === "executing"
+      ? "Posting..."
+      : status === "error"
+      ? "Retry"
+      : "Accept";
+  const acceptDisabled = status === "executing" || status === "success";
+  const rejectDisabled = status === "executing" || status === "success";
+  const showReject = status !== "success";
+  const statusMessageClass =
+    status === "error"
+      ? "text-red-700"
+      : status === "success"
+      ? "text-green-700"
+      : "text-gray-600";
 
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm">
+    <div className={`rounded-xl border ${cardClass} p-4 shadow-sm`}>
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
-          <p className="text-[11px] uppercase tracking-wide text-amber-600 font-semibold">
-            Campaign Update Request
+          <p
+            className={`text-[11px] uppercase tracking-wide font-semibold ${accent}`}
+          >
+            Social Posting Request
           </p>
           <h4 className="mt-1 text-sm font-semibold text-gray-900">
-            Approve this change?
+            Post to{" "}
+            {action.platform.charAt(0).toUpperCase() + action.platform.slice(1)}
           </h4>
         </div>
-        <Badge
-          variant="outline"
-          className="border-amber-200 bg-amber-100 text-amber-700"
-        >
-          Pending
+        <Badge variant="outline" className={badgeClass}>
+          {label}
         </Badge>
       </div>
 
-      {caption && (
-        <div className="mb-4 rounded-lg border border-amber-200 bg-white/60 p-3">
+      <div className="mb-4 rounded-lg border border-white/60 bg-white/60 p-3">
+        <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">
+          Post Content
+        </p>
+        <div className="text-sm text-gray-900 whitespace-pre-wrap max-h-32 overflow-y-auto pr-1">
+          {action.content}
+        </div>
+      </div>
+
+      {action.media && (
+        <div className="mb-4 rounded-lg border border-white/60 bg-white/60 p-3">
           <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">
-            New Caption
+            Media
           </p>
-          <div className="text-sm text-gray-900 whitespace-pre-wrap max-h-32 overflow-y-auto pr-1">
-            {caption}
+          <div className="text-sm text-gray-900 break-words">
+            {action.media}
           </div>
         </div>
       )}
@@ -294,19 +469,40 @@ function ToolCallApproval({
         <Button
           onClick={onApprove}
           size="sm"
-          className="bg-green-600 hover:bg-green-700 text-white"
+          disabled={acceptDisabled}
+          className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-70"
         >
-          Accept
+          {status === "executing" ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              {acceptLabel}
+            </>
+          ) : (
+            <>
+              <CheckCircle className="w-4 h-4 mr-1" />
+              {acceptLabel}
+            </>
+          )}
         </Button>
-        <Button
-          onClick={onReject}
-          size="sm"
-          variant="outline"
-          className="border-red-200 text-red-700 hover:bg-red-50"
-        >
-          Reject
-        </Button>
+        {showReject ? (
+          <Button
+            onClick={onReject}
+            size="sm"
+            variant="outline"
+            disabled={rejectDisabled}
+            className="border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-70"
+          >
+            <XCircle className="w-4 h-4 mr-1" />
+            Reject
+          </Button>
+        ) : null}
       </div>
+
+      {statusMessage && (
+        <div className={`mt-3 text-xs ${statusMessageClass}`}>
+          {statusMessage}
+        </div>
+      )}
     </div>
   );
 }
@@ -396,7 +592,10 @@ function CompetitorAnalysisPreview({
   );
 }
 
-export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
+export function ChatbotPanel({
+  campaignContext,
+  onCampaignContextUpdate,
+}: ChatbotPanelProps) {
   const [inputValue, setInputValue] = useState("");
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashMenuItems, setSlashMenuItems] = useState<ReferenceItem[]>([]);
@@ -417,9 +616,52 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
     []
   );
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
-  const [pendingActions, setPendingActions] = useState<ActionState[]>([]);
-  const [processedMessages, setProcessedMessages] = useState<Set<string>>(
-    new Set()
+  const [socialActionStatuses, setSocialActionStatuses] = useState<
+    Record<string, SocialActionState>
+  >({});
+  const [dismissedSocialActionKeys, setDismissedSocialActionKeys] = useState<
+    string[]
+  >([]);
+  const appliedCampaignUpdateIdsRef = useRef<Set<string>>(new Set());
+
+  const applyCampaignUpdateFromParams = useCallback(
+    (params?: Record<string, unknown>) => {
+      if (!onCampaignContextUpdate || !campaignContext) return;
+
+      const nextCaption =
+        params && typeof params.caption === "string"
+          ? (params.caption as string)
+          : campaignContext.caption;
+
+      let nextMedia: CampaignMedia | null = campaignContext.media ?? null;
+      if (params) {
+        const mediaType = params.mediaType;
+        const mediaUrl = params.mediaUrl;
+        if (
+          typeof mediaType === "string" &&
+          (mediaType === "image" || mediaType === "video") &&
+          typeof mediaUrl === "string" &&
+          mediaUrl.length > 0
+        ) {
+          const mediaName =
+            typeof params.mediaName === "string"
+              ? (params.mediaName as string)
+              : campaignContext.media?.name;
+          nextMedia = {
+            type: mediaType,
+            url: mediaUrl,
+            name: mediaName,
+          };
+        }
+      }
+
+      onCampaignContextUpdate({
+        id: campaignContext.id,
+        caption: nextCaption,
+        media: nextMedia,
+      });
+    },
+    [campaignContext, onCampaignContextUpdate]
   );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -441,16 +683,14 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
   const scrollToBottom = () =>
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
-  // Execute social media actions
-  const executeAction = async (action: SocialAction) => {
-    const actionId = Date.now().toString();
-    const newAction: ActionState = {
-      action,
-      status: "executing",
-      message: "Executing action...",
-    };
-
-    setPendingActions((prev) => [...prev, newAction]);
+  const executeAction = async (action: SocialAction, actionKey: string) => {
+    setSocialActionStatuses((prev) => ({
+      ...prev,
+      [actionKey]: {
+        status: "executing",
+        message: "Posting to social...",
+      },
+    }));
 
     try {
       const response = await fetch("/api/execute-action", {
@@ -462,127 +702,135 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
         }),
       });
 
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+
       const result = await response.json();
 
-      setPendingActions((prev) =>
-        prev.map((a) =>
-          a.action === action
-            ? {
-                ...a,
-                status: result.success ? "success" : "error",
-                message: result.message,
-              }
-            : a
-        )
-      );
+      setSocialActionStatuses((prev) => ({
+        ...prev,
+        [actionKey]: {
+          status: result.success ? "success" : "error",
+          message:
+            typeof result.message === "string"
+              ? result.message
+              : result.success
+              ? "Action completed successfully."
+              : "Action failed to complete.",
+        },
+      }));
     } catch (error) {
-      setPendingActions((prev) =>
-        prev.map((a) =>
-          a.action === action
-            ? { ...a, status: "error", message: "Failed to execute action" }
-            : a
-        )
-      );
+      console.error("Failed to execute social action:", error);
+      setSocialActionStatuses((prev) => ({
+        ...prev,
+        [actionKey]: {
+          status: "error",
+          message: "Failed to execute action",
+        },
+      }));
     }
+  };
+
+  const handleSocialActionApprove = (
+    actionKey: string,
+    action: SocialAction
+  ) => {
+    setDismissedSocialActionKeys((prev) =>
+      prev.filter((key) => key !== actionKey)
+    );
+    void executeAction(action, actionKey);
+  };
+
+  const handleSocialActionReject = (actionKey: string) => {
+    setDismissedSocialActionKeys((prev) =>
+      prev.includes(actionKey) ? prev : [...prev, actionKey]
+    );
+    setSocialActionStatuses((prev) => {
+      if (!(actionKey in prev)) return prev;
+      const next = { ...prev };
+      delete next[actionKey];
+      return next;
+    });
   };
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // Handle action blocks in messages
-  useEffect(() => {
-    messages.forEach((message) => {
-      if (message.role === "assistant" && !processedMessages.has(message.id)) {
-        const textContent = (message as ChatMessage).parts
-          .filter((part) => part.type === "text")
-          .map((part) => part.text)
-          .join("\n");
-
-        const action = parseActionFromText(textContent);
-        if (action) {
-          setProcessedMessages((prev) => new Set([...prev, message.id]));
-          // Don't auto-execute, just show the action block
-        }
-      }
-    });
-  }, [messages, processedMessages]);
-
   useEffect(() => {
     setDismissedToolCallIds([]);
   }, [chatId]);
+
+  useEffect(() => {
+    setSocialActionStatuses({});
+    setDismissedSocialActionKeys([]);
+    appliedCampaignUpdateIdsRef.current.clear();
+  }, [chatId]);
+
+  useEffect(() => {
+    if (!onCampaignContextUpdate) return;
+
+    messages.forEach((message) => {
+      const chatMsg = message as ChatMessage;
+      chatMsg.toolInvocations?.forEach((invocation) => {
+        if (
+          invocation.toolName === "updateCampaign" &&
+          invocation.state === "result" &&
+          invocation.result &&
+          typeof invocation.result === "object"
+        ) {
+          if (appliedCampaignUpdateIdsRef.current.has(invocation.toolCallId)) {
+            return;
+          }
+
+          const result = invocation.result as {
+            success?: boolean;
+            campaign?: {
+              id?: string;
+              caption?: string;
+              media?: CampaignMedia | null;
+            };
+          };
+
+          if (result?.success && result.campaign) {
+            const { id, caption, media } = result.campaign;
+            if (id && typeof caption === "string") {
+              onCampaignContextUpdate({
+                id,
+                caption,
+                media: normalizeCampaignMedia(media) ?? null,
+              });
+              appliedCampaignUpdateIdsRef.current.add(invocation.toolCallId);
+              return;
+            }
+          }
+
+          if (
+            result?.success &&
+            campaignContext &&
+            invocation.args &&
+            typeof invocation.args === "object"
+          ) {
+            applyCampaignUpdateFromParams(
+              invocation.args as Record<string, unknown>
+            );
+            appliedCampaignUpdateIdsRef.current.add(invocation.toolCallId);
+          }
+        }
+      });
+    });
+  }, [
+    messages,
+    onCampaignContextUpdate,
+    campaignContext,
+    applyCampaignUpdateFromParams,
+  ]);
 
   // Set portal target once DOM is available
   useEffect(() => {
     if (typeof document !== "undefined") setPortalTarget(document.body);
   }, []);
-
-  // Render action block with execute/cancel buttons
-  const renderActionBlock = (action: SocialAction) => {
-    const existingAction = pendingActions.find(
-      (a) =>
-        a.action.platform === action.platform &&
-        a.action.content === action.content
-    );
-
-    if (existingAction) {
-      return (
-        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="flex items-center gap-2 mb-2">
-            {existingAction.status === "executing" && (
-              <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-            )}
-            {existingAction.status === "success" && (
-              <CheckCircle className="w-4 h-4 text-green-600" />
-            )}
-            {existingAction.status === "error" && (
-              <XCircle className="w-4 h-4 text-red-600" />
-            )}
-            <span className="font-medium text-gray-900">
-              Post to{" "}
-              {action.platform.charAt(0).toUpperCase() +
-                action.platform.slice(1)}
-            </span>
-          </div>
-          <div className="text-xs text-gray-500">{existingAction.message}</div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="font-medium text-gray-900">
-            Ready to post to{" "}
-            {action.platform.charAt(0).toUpperCase() + action.platform.slice(1)}
-          </span>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            onClick={() => executeAction(action)}
-            className="bg-green-600 hover:bg-green-700 text-white"
-          >
-            <CheckCircle className="w-4 h-4 mr-1" />
-            Execute
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              setPendingActions((prev) =>
-                prev.filter((a) => a.action !== action)
-              )
-            }
-            className="border-red-300 text-red-600 hover:bg-red-50"
-          >
-            <XCircle className="w-4 h-4 mr-1" />
-            Cancel
-          </Button>
-        </div>
-      </div>
-    );
-  };
 
   // Load slash menu items on mount
   useEffect(() => {
@@ -751,6 +999,9 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
     setDismissedToolCallIds((prev) =>
       prev.includes(toolCall.toolCallId) ? prev : [...prev, toolCall.toolCallId]
     );
+    if (toolName === "updateCampaign") {
+      applyCampaignUpdateFromParams(parameters);
+    }
   };
 
   const handleToolReject = (toolCall: ToolCallPart) => {
@@ -808,8 +1059,32 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
           ) : (
             <div className="space-y-6">
               {messages.map((message) => {
-                // Debug: log message structure
                 const chatMsg = message as ChatMessage;
+                const textParts = chatMsg.parts.filter(
+                  (part): part is Extract<ChatMessagePart, { type: "text" }> =>
+                    part.type === "text"
+                );
+                const combinedText = textParts
+                  .map((part) => part.text)
+                  .join("\n");
+                const candidateSocialAction =
+                  message.role === "assistant"
+                    ? parseActionFromText(combinedText)
+                    : null;
+                const socialPostAction =
+                  candidateSocialAction?.type === "post_to_social"
+                    ? candidateSocialAction
+                    : null;
+                const socialActionKey = socialPostAction
+                  ? buildSocialActionKey(message.id, socialPostAction)
+                  : null;
+                const socialActionState =
+                  (socialActionKey && socialActionStatuses[socialActionKey]) ||
+                  undefined;
+                const socialActionDismissed = socialActionKey
+                  ? dismissedSocialActionKeys.includes(socialActionKey)
+                  : false;
+
                 if (message.role === "assistant") {
                   console.log("🔍 [ChatbotPanel] Assistant message:", message);
                   console.log("🔍 [ChatbotPanel] Parts:", chatMsg.parts);
@@ -817,30 +1092,34 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                     "🔍 [ChatbotPanel] ToolInvocations:",
                     chatMsg.toolInvocations
                   );
+                  console.log(
+                    "🔍 [ChatbotPanel] Parsed social action:",
+                    socialPostAction
+                  );
                 }
 
                 return (
                   <div key={message.id} className="space-y-2">
                     {message.role === "user" ? (
                       (() => {
-                        const visibleTexts = (message as ChatMessage).parts
-                          .filter(
-                            (
-                              part
-                            ): part is Extract<
-                              ChatMessagePart,
-                              { type: "text" }
-                            > => part.type === "text"
-                          )
-                          .map((part) => ({
-                            raw: part.text,
-                            cleaned: stripHiddenDirectives(part.text),
-                          }))
+                        const visibleTexts = textParts
+                          .map((part) => {
+                            const withoutDirectives = stripHiddenDirectives(
+                              part.text
+                            );
+                            const withoutActions =
+                              stripActionBlocks(withoutDirectives);
+                            return {
+                              raw: part.text,
+                              cleaned: withoutActions,
+                            };
+                          })
                           .filter(
                             ({ cleaned, raw }) =>
                               !shouldHideUserMessageText(cleaned, raw)
                           )
-                          .map(({ cleaned }) => cleaned);
+                          .map(({ cleaned }) => cleaned)
+                          .filter((text) => text.trim().length > 0);
 
                         if (visibleTexts.length === 0) {
                           return null;
@@ -864,8 +1143,13 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                           Assistant
                         </div>
                         <div className="space-y-3">
-                          {(message as ChatMessage).parts.map((part, index) => {
+                          {chatMsg.parts.map((part, index) => {
                             if (part.type === "text") {
+                              const sanitized = stripActionBlocks(part.text);
+                              if (!sanitized.trim()) {
+                                return null;
+                              }
+
                               return (
                                 <div
                                   key={`text-${message.id}-${index}`}
@@ -942,7 +1226,7 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                                       ),
                                     }}
                                   >
-                                    {part.text}
+                                    {sanitized}
                                   </ReactMarkdown>
                                 </div>
                               );
@@ -970,8 +1254,9 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                             ) {
                               const toolCallPart = part;
                               return (
-                                <ToolCallApproval
+                                <ActionApprovalCard
                                   key={`tool-${message.id}-${index}`}
+                                  variant="tool"
                                   toolCall={toolCallPart}
                                   onApprove={() =>
                                     handleToolApprove(toolCallPart)
@@ -1035,12 +1320,13 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                                 } as ToolCallPart;
 
                                 console.log(
-                                  "✅ [ChatbotPanel] Rendering ToolCallApproval (call state)"
+                                  "✅ [ChatbotPanel] Rendering ActionApprovalCard (call state)"
                                 );
 
                                 return (
-                                  <ToolCallApproval
+                                  <ActionApprovalCard
                                     key={`tool-inv-${message.id}-${idx}`}
+                                    variant="tool"
                                     toolCall={toolCallPart}
                                     onApprove={() =>
                                       handleToolApprove(toolCallPart)
@@ -1078,11 +1364,12 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                                   output: result,
                                 } as ToolCallPart;
                                 console.log(
-                                  "✅ [ChatbotPanel] Rendering ToolCallApproval (result state)"
+                                  "✅ [ChatbotPanel] Rendering ActionApprovalCard (result state)"
                                 );
                                 return (
-                                  <ToolCallApproval
+                                  <ActionApprovalCard
                                     key={`tool-inv-${message.id}-${idx}`}
+                                    variant="tool"
                                     toolCall={toolCallPart}
                                     onApprove={() =>
                                       handleToolApprove(toolCallPart)
@@ -1096,6 +1383,27 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                             }
                             return null;
                           })}
+
+                          {socialPostAction &&
+                          socialActionKey &&
+                          !socialActionDismissed ? (
+                            <ActionApprovalCard
+                              key={`social-${message.id}`}
+                              variant="social"
+                              action={socialPostAction}
+                              status={socialActionState?.status ?? "pending"}
+                              statusMessage={socialActionState?.message}
+                              onApprove={() =>
+                                handleSocialActionApprove(
+                                  socialActionKey,
+                                  socialPostAction
+                                )
+                              }
+                              onReject={() =>
+                                handleSocialActionReject(socialActionKey)
+                              }
+                            />
+                          ) : null}
                         </div>
                       </div>
                     )}
