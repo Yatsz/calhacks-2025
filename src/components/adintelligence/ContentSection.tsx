@@ -16,10 +16,11 @@ interface ContentSectionProps {
   color: string;
   showMediaOnly: boolean;
   onContentClick: (content: ContentItem) => void;
+  items: ContentItem[];
+  onItemsChange: (items: ContentItem[]) => void;
 }
 
-export function ContentSection({ title, color, showMediaOnly, onContentClick }: ContentSectionProps) {
-  const [items, setItems] = useState<ContentItem[]>([]);
+export function ContentSection({ title, color, showMediaOnly, onContentClick, items, onItemsChange }: ContentSectionProps) {
 
   const handleUpload = (files: File[]) => {
     const newItems: ContentItem[] = files.map((file) => {
@@ -40,11 +41,11 @@ export function ContentSection({ title, color, showMediaOnly, onContentClick }: 
       };
     });
 
-    setItems((prev) => [...prev, ...newItems]);
+    onItemsChange([...items, ...newItems]);
   };
 
   const handleDelete = (id: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
+    onItemsChange(items.filter((item) => item.id !== id));
   };
 
   // Filter items based on media toggle
