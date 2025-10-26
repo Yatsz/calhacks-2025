@@ -100,7 +100,7 @@ Edit `src/app/api/chat/route.ts`:
 
 ```typescript
 const result = streamText({
-  model: anthropic('claude-3-5-sonnet-20241022'), // Change model here
+  model: anthropic('claude-sonnet-4-5-20250929'), // Change model here
   messages,
 });
 ```

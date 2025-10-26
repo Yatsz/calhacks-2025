@@ -1,9 +1,21 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createGroq } from "@ai-sdk/groq";
-import { convertToModelMessages, streamText, UIMessage } from "ai";
+import {
+  convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  streamText,
+  UIMessage,
+} from "ai";
 import { updateCampaign } from "@/lib/db";
 import { z } from "zod";
+import { buildCompetitorAnalysisPayload } from '@/lib/competitor-analysis';
+import type {
+  CompetitorAnalysisDataPart,
+  CompetitorAnalysisMetadata,
+  CompetitorAnalysisPayload,
+} from '@/types/competitor-analysis';
 
 // Create AI clients
 const anthropic = createAnthropic({
@@ -22,11 +34,11 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const messages = body.messages as UIMessage[];
-    
+
     // Extract metadata from the last user message
     let campaignContext: { id: string; caption: string; media: { type: "image" | "video"; url: string; name?: string } | null } | undefined;
     let model: string | undefined;
-    
+
     // Find the last user message and extract metadata
     const lastUserMessage = messages.filter(m => m.role === 'user').pop();
     if (lastUserMessage) {
@@ -41,10 +53,10 @@ export async function POST(req: Request) {
             const metadata = JSON.parse(metadataMatch[1]);
             campaignContext = metadata.campaignContext;
             model = metadata.model;
-            
+
             // Remove metadata from the message text so AI doesn't see it
             textPart.text = textPart.text.replace(/\n\n<!--METADATA:[\s\S]+?-->/, '');
-            
+
             console.log('✅ [API] Extracted metadata from message');
             console.log('✅ [API] campaignContext:', JSON.stringify(campaignContext, null, 2));
             console.log('✅ [API] model:', model);
@@ -57,7 +69,7 @@ export async function POST(req: Request) {
         }
       }
     }
-    
+
     console.log('🟢 [API] Messages count:', messages.length);
 
     // Build system prompt with campaign context
@@ -168,26 +180,26 @@ Current media: ${campaignContext.media ? `${campaignContext.media.type} at ${cam
         execute: async ({ caption, mediaType, mediaUrl, mediaName }: { caption?: string; mediaType?: 'image' | 'video'; mediaUrl?: string; mediaName?: string }) => {
           console.log('🔧 [TOOL] updateCampaign called!');
           console.log('🔧 [TOOL] Parameters:', { caption, mediaType, mediaUrl, mediaName });
-          
+
           if (!campaignContext) {
             console.error('❌ [TOOL] No campaign context available');
             return { error: 'No campaign is currently being edited. Cannot update campaign.' };
           }
-      
+
           try {
             console.log('🔧 [TOOL] Updating campaign:', campaignContext.id);
-            
+
             const updateData: { caption: string; media: { type: "image" | "video"; url: string; name?: string } | null } = {
               caption: campaignContext.caption,
               media: campaignContext.media,
             };
-      
+
             // Only update fields that are provided
             if (caption !== undefined && caption !== campaignContext.caption) {
               console.log('🔧 [TOOL] Updating caption to:', caption);
               updateData.caption = caption;
             }
-      
+
             if (mediaUrl && mediaType) {
               console.log('🔧 [TOOL] Updating media to:', mediaType, mediaUrl);
               updateData.media = {
@@ -196,12 +208,12 @@ Current media: ${campaignContext.media ? `${campaignContext.media.type} at ${cam
                 name: mediaName,
               };
             }
-      
+
             await updateCampaign(campaignContext.id, updateData);
             console.log('✅ [TOOL] Campaign updated successfully');
-            
-            return { 
-              success: true, 
+
+            return {
+              success: true,
               message: 'Campaign updated successfully',
               updatedCaption: updateData.caption !== campaignContext.caption,
               updatedMedia: Boolean(mediaUrl && mediaType)
@@ -216,13 +228,13 @@ Current media: ${campaignContext.media ? `${campaignContext.media.type} at ${cam
 
     // Select the appropriate model
     const selectedModel = model || "claude-4.5";
-    
+
     console.log('🎯 [API] Selecting model:', selectedModel);
     console.log('🎯 [API] Model value type:', typeof selectedModel);
-    
+
     let aiModel;
     let modelName = "Claude Sonnet 4.5"; // For logging
-    
+
     switch (selectedModel) {
       case "claude-4.5":
         aiModel = anthropic("claude-sonnet-4-5-20250929");
@@ -249,37 +261,149 @@ Current media: ${campaignContext.media ? `${campaignContext.media.type} at ${cam
         aiModel = anthropic("claude-sonnet-4-5-20250929");
         modelName = "Claude Sonnet 4.5 (default)";
     }
-    
+
     console.log('🎯 [API] Using model:', modelName);
     console.log('🔧 [API] Campaign context available?', !!campaignContext);
     console.log('🔧 [API] Tool will be available?', !!campaignContext);
 
     // Stream the response using Vercel AI SDK
-    const result = campaignContext 
+    const result = campaignContext
       ? streamText({
-          model: aiModel,
-          system: systemPrompt,
-          messages: convertToModelMessages(messages),
-          tools: updateCampaignTool,
-          onFinish: () => {
-            console.log('✅ [API] Response streaming finished');
-          },
-        })
+        model: aiModel,
+        system: systemPrompt,
+        messages: convertToModelMessages(messages),
+        tools: updateCampaignTool,
+        onFinish: () => {
+          console.log('✅ [API] Response streaming finished');
+        },
+      })
       : streamText({
-          model: aiModel,
-          system: systemPrompt,
-          messages: convertToModelMessages(messages),
-        });
+        model: aiModel,
+        system: systemPrompt,
+        messages: convertToModelMessages(messages),
+      });
 
     return result.toUIMessageStreamResponse();
   } catch (error) {
-    console.error("Error in chat API:", error);
+    console.error('Error in chat API:', error);
     return new Response(
-      JSON.stringify({ error: "Failed to process chat request" }),
+      JSON.stringify({ error: 'Failed to process chat request' }),
       {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { 'Content-Type': 'application/json' },
       }
     );
   }
 }
+const ANALYSIS_TRIGGER = '!analysis';
+
+type UITextPart = Extract<UIMessage['parts'][number], { type: 'text'; text: string }>;
+
+async function tryHandleCompetitorAnalysis(messages: UIMessage[]): Promise<Response | null> {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return null;
+  }
+
+  const lastUserIndex = findLastUserMessageIndex(messages);
+  if (lastUserIndex === -1) {
+    return null;
+  }
+
+  const lastMessage = messages[lastUserIndex];
+  const messageText = getMessageText(lastMessage).trim();
+
+  if (!messageText.toLowerCase().startsWith(ANALYSIS_TRIGGER)) {
+    return null;
+  }
+
+  const userInstruction = messageText.replace(/^!analysis\s*/i, '').trim() || messageText;
+
+  const executionStart = Date.now();
+
+  const stream = createUIMessageStream<
+    UIMessage<CompetitorAnalysisMetadata, { 'competitor-analysis': CompetitorAnalysisDataPart }>
+  >({
+    execute: async ({ writer }) => {
+      const messageId = crypto.randomUUID();
+      const textPartId = `${messageId}-text`;
+
+      const metadata: CompetitorAnalysisMetadata = {
+        kind: 'brightdata-analysis',
+        query: userInstruction,
+      };
+
+      writer.write({ type: 'start', messageId, messageMetadata: metadata });
+
+      writer.write({ type: 'text-start', id: textPartId });
+      writer.write({
+        type: 'text-delta',
+        id: textPartId,
+        delta: 'BrightData competitor intelligence ready. Open the mindmap overlay to explore connections, sources, and trends.',
+      });
+
+      let payload: CompetitorAnalysisPayload | undefined;
+      let errorMessage: string | undefined;
+
+      try {
+        payload = await buildCompetitorAnalysisPayload(userInstruction);
+      } catch (error: unknown) {
+        console.error('Competitor analysis error:', error);
+        errorMessage =
+          error instanceof Error ? error.message : 'Failed to gather BrightData insights';
+      }
+
+      if (errorMessage) {
+        writer.write({
+          type: 'text-delta',
+          id: textPartId,
+          delta: `\n\n⚠️ BrightData tool call failed: ${errorMessage}.`,
+        });
+      } else {
+        writer.write({
+          type: 'text-delta',
+          id: textPartId,
+          delta: '\n\n📡 Powered by BrightData SERP research.',
+        });
+      }
+
+      writer.write({ type: 'text-end', id: textPartId });
+
+      const dataPart: CompetitorAnalysisDataPart = {
+        query: userInstruction,
+        payload,
+        error: errorMessage,
+        generatedAt: new Date().toISOString(),
+        durationMs: Date.now() - executionStart,
+        source: 'brightdata',
+      };
+
+      writer.write({
+        type: 'data-competitor-analysis',
+        id: messageId,
+        data: dataPart,
+      });
+
+      writer.write({ type: 'finish' });
+    },
+  });
+
+  return createUIMessageStreamResponse({ stream });
+}
+
+function findLastUserMessageIndex(messages: UIMessage[]) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function getMessageText(message: UIMessage) {
+  if (!message?.parts?.length) return '';
+  return message.parts
+    .filter((part): part is UITextPart => part.type === 'text' && typeof part.text === 'string')
+    .map((part) => part.text)
+    .join('\n');
+}
+

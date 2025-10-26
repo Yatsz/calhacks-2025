@@ -51,7 +51,7 @@ export default function HomePage() {
               AI Assistant
             </h3>
             <p className="text-gray-600 text-sm">
-              Get help crafting the perfect campaign with Claude AI
+              Get help crafting the perfect campaign
             </p>
           </div>
           <div className="backdrop-blur-xl bg-white/60 rounded-2xl p-6 shadow-xl">
