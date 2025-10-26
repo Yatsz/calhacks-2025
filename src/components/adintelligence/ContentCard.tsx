@@ -2,7 +2,7 @@ import { FileText, Video, Image as ImageIcon, File, X } from "lucide-react";
 
 interface ContentCardProps {
   id: string;
-  type: "image" | "video" | "pdf" | "text";
+  type: "image" | "video" | "pdf" | "text" | "link" | "campaign";
   name: string;
   url?: string;
   thumbnail?: string;
@@ -34,9 +34,17 @@ export function ContentCard({
     }
   };
 
+  const handleDragStart = (e: React.DragEvent) => {
+    const data = JSON.stringify({ id, type, name, url, thumbnail, text });
+    e.dataTransfer.setData('content-item', data);
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
   return (
     <div
       onClick={onClick}
+      draggable={type === 'image' || type === 'video'}
+      onDragStart={handleDragStart}
       className="group relative backdrop-blur-xl bg-white/50 border border-white/60 rounded-xl p-3 cursor-pointer hover:bg-white/70 hover:shadow-lg transition-all"
     >
       <button
@@ -51,10 +59,12 @@ export function ContentCard({
 
       {type === "image" && thumbnail ? (
         <div className="w-full aspect-video rounded-lg overflow-hidden mb-2 bg-white/30 backdrop-blur-sm">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={thumbnail} alt={name} className="w-full h-full object-cover" />
         </div>
       ) : type === "video" && thumbnail ? (
         <div className="w-full aspect-video rounded-lg overflow-hidden mb-2 bg-white/30 backdrop-blur-sm relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={thumbnail} alt={name} className="w-full h-full object-cover" />
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-8 h-8 rounded-full backdrop-blur-xl bg-white/90 flex items-center justify-center shadow-lg">

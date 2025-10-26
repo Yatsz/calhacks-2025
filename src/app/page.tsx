@@ -1,165 +1,40 @@
 "use client";
 
-import { useState } from "react";
-import { Header } from "@/components/adintelligence/Header";
-import { ChatbotPanel } from "@/components/adintelligence/ChatbotPanel";
-import { CampaignEditor } from "@/components/adintelligence/CampaignEditor";
-import { ContentSection } from "@/components/adintelligence/ContentSection";
-import { ContentPreviewModal } from "@/components/adintelligence/ContentPreviewModal";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { Link } from "lucide-react";
 
-interface ContentItem {
-  id: string;
-  type: "image" | "video" | "pdf" | "text";
-  name: string;
-  url?: string;
-  thumbnail?: string;
-  text?: string;
-}
-
-const contentTypes = [
-  { id: "inspiration", label: "Inspiration", color: "#669CE4" },
-  { id: "campaigns", label: "Past Campaigns", color: "#8462CF" },
-  { id: "library", label: "Content Library", color: "#3FB855" },
-];
-
-export default function AdIntelligencePage() {
-  const [selectedContent, setSelectedContent] = useState<ContentItem | null>(null);
-  const [activeTab, setActiveTab] = useState("inspiration");
-  const [showMediaOnly, setShowMediaOnly] = useState(false);
-  const [linkInput, setLinkInput] = useState("");
-  const [contentItems, setContentItems] = useState<Record<string, ContentItem[]>>({
-    inspiration: [],
-    campaigns: [],
-    library: [],
-  });
-  const [isDownloading, setIsDownloading] = useState(false);
-
-  const activeColor = contentTypes.find(t => t.id === activeTab)?.color || "#669CE4";
-
-  // Convert hex to RGB for the spotlight
-  const hexToRgb = (hex: string) => {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result
-      ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
-      : "102, 156, 228";
-  };
-
-  const handleLinkSubmit = async () => {
-    if (!linkInput.trim()) return;
-
-    setIsDownloading(true);
-    try {
-      const response = await fetch("/api/download-video", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ url: linkInput }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(data.error || "Failed to download video");
-        return;
-      }
-
-      // Create a new content item with the downloaded video
-      const newItem: ContentItem = {
-        id: Date.now().toString() + Math.random(),
-        type: "video",
-        name: data.filename,
-        url: data.videoUrl,
-        thumbnail: data.thumbnail || data.videoUrl,
-      };
-
-      // Add to the current active tab
-      setContentItems((prev) => ({
-        ...prev,
-        [activeTab]: [...prev[activeTab], newItem],
-      }));
-
-      // Clear the input
-      setLinkInput("");
-    } catch (error) {
-      console.error("Error downloading video:", error);
-      alert("Failed to download video. Please try again.");
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
+export default function HomePage() {
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Animated gradient background */}
-      <div className="fixed inset-0 bg-gradient-to-br from-blue-50 via-purple-50 to-green-50 transition-colors duration-700" />
-      
-      {/* Dynamic spotlight that changes with active tab */}
-      <div 
-        className="fixed top-20 left-20 w-[500px] h-[500px] rounded-full blur-3xl transition-all duration-700"
-        style={{ 
-          backgroundColor: `rgba(${hexToRgb(activeColor)}, 0.3)`,
-        }}
-      />
-      <div 
-        className="fixed bottom-20 right-20 w-96 h-96 rounded-full blur-3xl transition-all duration-700"
-        style={{ 
-          backgroundColor: `rgba(${hexToRgb(activeColor)}, 0.2)`,
-        }}
-      />
-      <div 
-        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl transition-all duration-700"
-        style={{ 
-          backgroundColor: `rgba(${hexToRgb(activeColor)}, 0.15)`,
-        }}
-      />
-      
-      <div className="relative z-10">
-        <Header />
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center p-8">
+      <div className="max-w-4xl mx-auto text-center space-y-8">
+        <div className="flex items-center justify-center gap-4 mb-8">
+          <Image 
+            src="/film.svg" 
+            alt="Crea" 
+            width={64} 
+            height={64}
+            className="w-16 h-16"
+          />
+          <h1 className="text-6xl font-bold text-gray-900">UGCIntel</h1>
+        </div>
         
-        <div className="pt-[73px] h-screen flex gap-4 p-4">
-          {/* Left Panel - Content Library with Tabs */}
-          <div className="w-80 backdrop-blur-2xl bg-white/30 border border-white/40 rounded-3xl shadow-xl overflow-hidden flex flex-col">
-            <div className="p-4 border-b border-white/40">
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="w-full backdrop-blur-xl bg-white/40 border border-white/50">
-                  {contentTypes.map((type) => (
-                    <TabsTrigger
-                      key={type.id}
-                      value={type.id}
-                      className="flex-1 data-[state=active]:backdrop-blur-xl data-[state=active]:bg-white/60 !text-gray-900 font-medium"
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <div
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ backgroundColor: type.color }}
-                        />
-                        {type.label.split(' ')[0]}
-                      </span>
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
+        <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+          Create, manage, and optimize your UGC campaigns with AI-powered insights
+        </p>
 
-              {/* Media Toggle */}
-              <div className="flex items-center justify-between mt-4 px-2">
-                <Label htmlFor="media-toggle" className="text-sm text-gray-700">
-                  Media Only
-                </Label>
-                <Switch
-                  id="media-toggle"
-                  checked={showMediaOnly}
-                  onCheckedChange={setShowMediaOnly}
-                />
-              </div>
-            </div>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-8">
+          <Link href="/adintelligence">
+            <Button className="bg-gray-900 hover:bg-gray-800 text-white px-8 py-6 text-lg">
+              Start Creating
+            </Button>
+          </Link>
+          <Link href="/campaigns">
+            <Button variant="outline" className="px-8 py-6 text-lg border-2">
+              View Campaigns
+            </Button>
+          </Link>
+        </div>
 
             <ScrollArea className="flex-1">
               <div className="py-6">
@@ -223,25 +98,27 @@ export default function AdIntelligencePage() {
                 </Button>
               </div>
             </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-12">
+          <div className="backdrop-blur-xl bg-white/60 rounded-2xl p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Content Library</h3>
+            <p className="text-gray-600 text-sm">
+              Organize your inspiration, past campaigns, and media assets
+            </p>
           </div>
-
-          {/* Center - Campaign Editor */}
-          <div className="flex-1 overflow-auto">
-            <CampaignEditor />
+          <div className="backdrop-blur-xl bg-white/60 rounded-2xl p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">AI Assistant</h3>
+            <p className="text-gray-600 text-sm">
+              Get help crafting the perfect campaign with Claude AI
+            </p>
           </div>
-
-          {/* Right Panel - AI Assistant */}
-          <div className="w-80 backdrop-blur-2xl bg-white/30 border border-white/40 rounded-3xl shadow-xl overflow-hidden">
-            <ChatbotPanel />
+          <div className="backdrop-blur-xl bg-white/60 rounded-2xl p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Campaign Manager</h3>
+            <p className="text-gray-600 text-sm">
+              Create, edit, and save campaigns with drag-and-drop simplicity
+            </p>
           </div>
         </div>
       </div>
-
-      <ContentPreviewModal
-        content={selectedContent}
-        onClose={() => setSelectedContent(null)}
-      />
     </div>
   );
 }
-
