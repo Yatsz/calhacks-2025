@@ -1,10 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Connect } from "./Connect";
 
 export function Header() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-2xl bg-white/40 border-b border-white/40 shadow-lg">
-      <div className="px-8 py-4 flex items-center gap-3">
+      <div className="px-8 py-4 flex items-center justify-between">
         <Link href="/campaigns" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
           <Image 
             src="/film.svg" 
@@ -15,6 +16,7 @@ export function Header() {
           />
           <span className="text-xl font-semibold text-gray-900 tracking-tight">AdIntelligence</span>
         </Link>
+        <Connect />
       </div>
     </header>
   );
