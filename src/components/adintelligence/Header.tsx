@@ -13,7 +13,7 @@ export function Header() {
             height={24}
             className="w-6 h-6"
           />
-          <span className="text-xl font-semibold text-gray-900 tracking-tight">UGCIntel</span>
+          <span className="text-xl font-semibold text-gray-900 tracking-tight">AdIntelligence</span>
         </Link>
       </div>
     </header>

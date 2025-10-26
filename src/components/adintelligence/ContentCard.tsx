@@ -43,7 +43,7 @@ export function ContentCard({
   return (
     <div
       onClick={onClick}
-      draggable={type === 'image' || type === 'video'}
+      draggable={type === 'image' || type === 'video' || type === 'campaign'}
       onDragStart={handleDragStart}
       className="group relative backdrop-blur-xl bg-white/50 border border-white/60 rounded-xl p-3 cursor-pointer hover:bg-white/70 hover:shadow-lg transition-all"
     >
@@ -52,9 +52,10 @@ export function ContentCard({
           e.stopPropagation();
           onDelete(id);
         }}
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-xl bg-white/80 hover:bg-white w-5 h-5 rounded-full flex items-center justify-center shadow-md"
+        className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-red-500 hover:bg-red-600 w-6 h-6 rounded-full flex items-center justify-center shadow-lg"
+        title="Delete"
       >
-        <X className="w-3 h-3 text-gray-600" />
+        <X className="w-3.5 h-3.5 text-white" />
       </button>
 
       {type === "image" && thumbnail ? (

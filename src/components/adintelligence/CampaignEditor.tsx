@@ -1,8 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ImageIcon } from "lucide-react";
+import { ImageIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import {
+  getCampaignById,
+  createCampaign,
+  updateCampaign,
+  getAllCampaigns,
+} from "@/lib/db";
 
 interface Campaign {
   id: string;
@@ -21,22 +28,27 @@ export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
   const [currentCampaignId, setCurrentCampaignId] = useState<string | null>(null);
   const [media, setMedia] = useState<{ type: "image" | "video"; url: string; name?: string } | null>(null);
   const [caption, setCaption] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Load campaign when editingCampaignId changes
-  const loadCampaign = useCallback(() => {
+  const loadCampaign = useCallback(async () => {
     if (editingCampaignId && typeof window !== 'undefined') {
-      const stored = localStorage.getItem('campaigns');
-      if (stored) {
-        const campaigns: Campaign[] = JSON.parse(stored);
-        const campaign = campaigns.find(c => c.id === editingCampaignId);
+      setLoading(true);
+      try {
+        const campaign = await getCampaignById(editingCampaignId);
         if (campaign) {
-          // Batch state updates using setTimeout to avoid React warning
           setTimeout(() => {
             setMedia(campaign.media);
             setCaption(campaign.caption);
             setCurrentCampaignId(campaign.id);
           }, 0);
         }
+      } catch (error) {
+        console.error('Error loading campaign:', error);
+        toast.error('Failed to load campaign');
+      } finally {
+        setLoading(false);
       }
     } else {
       // Reset for new campaign
@@ -62,7 +74,7 @@ export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     
@@ -72,10 +84,9 @@ export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
       
       // Check if it's a campaign being dragged (from Past Campaigns)
       if (item.text && item.text.length > 50) {
-        // It's likely a campaign - load the full campaign from localStorage
-        const stored = localStorage.getItem('campaigns');
-        if (stored) {
-          const campaigns: Campaign[] = JSON.parse(stored);
+        // It's likely a campaign - load the full campaign from database
+        try {
+          const campaigns = await getAllCampaigns();
           const campaign = campaigns.find((c: Campaign) => c.id === item.id);
           if (campaign) {
             // Replace the entire campaign
@@ -84,6 +95,8 @@ export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
             setCurrentCampaignId(null); // Create as new campaign, not edit
             return;
           }
+        } catch (error) {
+          console.error('Error loading campaign for drag:', error);
         }
       }
       
@@ -98,107 +111,120 @@ export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
     }
   };
 
-  const handleSaveCampaign = () => {
+  const handleSaveCampaign = async () => {
     if (!media && !caption.trim()) {
-      alert("Please add media or caption before saving.");
+      toast.error("Please add media or caption before saving");
       return;
     }
 
-    // Get existing campaigns
-    const existingCampaigns = localStorage.getItem('campaigns');
-    const campaigns: Campaign[] = existingCampaigns ? JSON.parse(existingCampaigns) : [];
-    
-    if (currentCampaignId) {
-      // Update existing campaign
-      const index = campaigns.findIndex(c => c.id === currentCampaignId);
-      if (index !== -1) {
-        campaigns[index] = {
-          ...campaigns[index],
-          media,
+    setSaving(true);
+    try {
+      if (currentCampaignId) {
+        // Update existing campaign
+        await updateCampaign(currentCampaignId, {
           caption,
-        };
-        localStorage.setItem('campaigns', JSON.stringify(campaigns));
-        alert("Campaign updated successfully!");
+          media,
+        });
+        toast.success("Campaign updated successfully!");
+      } else {
+        // Create new campaign
+        await createCampaign({
+          caption,
+          media,
+        });
+        toast.success("Campaign saved successfully!");
       }
-    } else {
-      // Create new campaign
-      const newCampaign: Campaign = {
-        id: Date.now().toString() + Math.random(),
-        media,
-        caption,
-        createdAt: new Date().toISOString(),
-      };
-      campaigns.push(newCampaign);
-      localStorage.setItem('campaigns', JSON.stringify(campaigns));
-      alert("Campaign saved successfully!");
-    }
 
-    // Navigate to campaigns page
-    router.push('/campaigns');
+      // Navigate to campaigns page
+      router.push('/campaigns');
+    } catch (error) {
+      console.error('Error saving campaign:', error);
+      toast.error('Failed to save campaign. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="h-full flex items-center justify-center p-8">
       <div className="w-full max-w-lg">
-        <div className="backdrop-blur-2xl bg-white/40 rounded-3xl border border-white/50 shadow-2xl overflow-hidden">
-          {/* Media Section */}
-          <div 
-            className={`relative backdrop-blur-xl ${isDragging ? 'bg-white/40' : 'bg-white/20'} transition-colors`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            {media ? (
-              <div className="relative aspect-square">
-                {media.type === "image" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={media.url}
-                    alt={media.name || "Campaign media"}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <video
-                    src={media.url}
-                    controls
-                    className="w-full h-full object-cover bg-black"
-                  />
-                )}
-              </div>
-            ) : (
-              <div className="aspect-square flex items-center justify-center">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-14 h-14 rounded-full backdrop-blur-xl bg-white/60 flex items-center justify-center shadow-lg">
-                    <ImageIcon className="w-6 h-6 text-gray-700" />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm text-gray-900 font-medium">Empty Media</p>
-                    <p className="text-xs text-gray-600 mt-1">Drag from content library</p>
+        {loading ? (
+          <div className="backdrop-blur-2xl bg-white/40 rounded-3xl border border-white/50 shadow-2xl p-12 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-gray-700" />
+              <p className="text-sm text-gray-700">Loading campaign...</p>
+            </div>
+          </div>
+        ) : (
+          <div className="backdrop-blur-2xl bg-white/40 rounded-3xl border border-white/50 shadow-2xl overflow-hidden">
+            {/* Media Section */}
+            <div 
+              className={`relative backdrop-blur-xl ${isDragging ? 'bg-white/40' : 'bg-white/20'} transition-colors`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              {media ? (
+                <div className="relative aspect-square">
+                  {media.type === "image" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={media.url}
+                      alt={media.name || "Campaign media"}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <video
+                      src={media.url}
+                      controls
+                      className="w-full h-full object-cover bg-black"
+                    />
+                  )}
+                </div>
+              ) : (
+                <div className="aspect-square flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-14 h-14 rounded-full backdrop-blur-xl bg-white/60 flex items-center justify-center shadow-lg">
+                      <ImageIcon className="w-6 h-6 text-gray-700" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm text-gray-900 font-medium">Empty Media</p>
+                      <p className="text-xs text-gray-600 mt-1">Drag from content library</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-
-          {/* Caption Section */}
-          <div className="p-6 space-y-4 backdrop-blur-xl bg-white/30 border-t-2 border-white/40">
-            <div className="space-y-2">
-              <Textarea
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                placeholder="Write your campaign caption..."
-                className="min-h-[100px] resize-none backdrop-blur-xl bg-white/70 border-2 border-white/80 text-gray-900 placeholder:text-gray-500 shadow-sm focus:bg-white focus:border-gray-300"
-              />
+              )}
             </div>
 
-            <Button 
-              onClick={handleSaveCampaign}
-              className="w-full bg-gray-900 hover:bg-gray-800 shadow-lg text-white"
-            >
-              Save Campaign
-            </Button>
+            {/* Caption Section */}
+            <div className="p-6 space-y-4 backdrop-blur-xl bg-white/30 border-t-2 border-white/40">
+              <div className="space-y-2">
+                <Textarea
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  placeholder="Write your campaign caption..."
+                  className="min-h-[100px] resize-none backdrop-blur-xl bg-white/70 border-2 border-white/80 text-gray-900 placeholder:text-gray-500 shadow-sm focus:bg-white focus:border-gray-300"
+                  disabled={saving}
+                />
+              </div>
+
+              <Button 
+                onClick={handleSaveCampaign}
+                className="w-full bg-gray-900 hover:bg-gray-800 shadow-lg text-white"
+                disabled={saving}
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Campaign"
+                )}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

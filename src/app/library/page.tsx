@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { AddContentModal } from "@/components/adintelligence/AddContentModal";
 import { Plus, Trash2 } from "lucide-react";
+import {
+  getContentItemsByCategory,
+  createContentItem,
+  deleteContentItem,
+} from "@/lib/db";
 
 interface ContentItem {
   id: string;
@@ -17,38 +22,39 @@ interface ContentItem {
 }
 
 export default function LibraryPage() {
-  const [items, setItems] = useState<ContentItem[]>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("content-content-library");
-      if (stored) {
-        try {
-          return JSON.parse(stored);
-        } catch (e) {
-          console.error("Failed to load library:", e);
-        }
-      }
-    }
-    return [];
-  });
+  const [items, setItems] = useState<ContentItem[]>([]);
   const [showModal, setShowModal] = useState(false);
 
-  const handleAdd = (content: Omit<ContentItem, "id">) => {
-    const newItem: ContentItem = {
-      ...content,
-      id: Date.now().toString() + Math.random(),
-    };
-    const updated = [...items, newItem];
-    setItems(updated);
-    localStorage.setItem("content-content-library", JSON.stringify(updated));
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await getContentItemsByCategory('content-library');
+        setItems(data);
+      } catch (error) {
+        console.error('Failed to load library:', error);
+      }
+    })();
+  }, []);
+
+  const handleAdd = async (content: Omit<ContentItem, "id">) => {
+    try {
+      const newItem = await createContentItem(content, 'content-library');
+      if (newItem) {
+        setItems((prev) => [newItem, ...prev]);
+      }
+    } catch (error) {
+      console.error('Failed to create library item:', error);
+      alert('Failed to add content. Please try again.');
+    }
   };
 
-  const handleDelete = (id: string) => {
-    const updated = items.filter((item) => item.id !== id);
-    setItems(updated);
-    if (updated.length === 0) {
-      localStorage.removeItem("content-content-library");
-    } else {
-      localStorage.setItem("content-content-library", JSON.stringify(updated));
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteContentItem(id);
+      setItems((prev) => prev.filter((item) => item.id !== id));
+    } catch (error) {
+      console.error('Failed to delete library item:', error);
+      alert('Failed to delete content. Please try again.');
     }
   };
 
