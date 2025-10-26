@@ -15,7 +15,7 @@ export interface ActionResult {
 
 // Initialize Composio client
 function getComposioClient() {
-  const apiKey = process.env.COMPOSIO_API_KEY || 'ak_UDv8JMOfjuCkaOaQKjU2';
+  const apiKey = process.env.COMPOSIO_API_KEY;
   
   return new Composio({
     apiKey,
@@ -104,10 +104,9 @@ export async function executeSocialAction(
         break;
         
       case 'linkedin':
-        result = await composio.actions.execute({
-          action: 'LINKEDIN_CREATE_POST',
-          connectedAccountId: platformAccount.id,
-          params: {
+        result = await composio.tools.execute("LINKEDIN_CREATE_POST", {
+          userId,
+          arguments: {
             text: action.content,
             ...(action.media && { media_url: action.media })
           }
@@ -115,10 +114,9 @@ export async function executeSocialAction(
         break;
         
       case 'twitter':
-        result = await composio.actions.execute({
-          action: 'TWITTER_CREATE_POST',
-          connectedAccountId: platformAccount.id,
-          params: {
+        result = await composio.tools.execute("TWITTER_CREATE_POST", {
+          userId,
+          arguments: {
             text: action.content,
             ...(action.media && { media_url: action.media })
           }
@@ -155,21 +153,12 @@ export async function checkConnectedAccounts(userId: string): Promise<{
 }> {
   try {
     const composio = getComposioClient();
-    const accounts = await composio.connectedAccounts.list(userId);
+    const accounts = await composio.connectedAccounts.list({ userIds: [userId] });
     
     return {
-      instagram: accounts.some(acc => 
-        acc.platform === 'instagram' || 
-        acc.appName?.toLowerCase().includes('instagram')
-      ),
-      linkedin: accounts.some(acc => 
-        acc.platform === 'linkedin' || 
-        acc.appName?.toLowerCase().includes('linkedin')
-      ),
-      twitter: accounts.some(acc => 
-        acc.platform === 'twitter' || 
-        acc.appName?.toLowerCase().includes('twitter')
-      )
+      instagram: accounts.items.some(acc => acc.toolkit.slug === 'instagram'),
+      linkedin: accounts.items.some(acc => acc.toolkit.slug === 'linkedin'),
+      twitter: accounts.items.some(acc => acc.toolkit.slug === 'twitter')
     };
   } catch (error) {
     console.error('Failed to check connected accounts:', error);
