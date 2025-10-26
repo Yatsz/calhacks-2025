@@ -1,8 +1,32 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  
+  /* AdIntelligence theme variables */
+  --font-size: 16px;
+  --card: #fff;
+  --card-foreground: oklch(.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(.145 0 0);
+  --primary: #030213;
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(.95 .0058 264.53);
+  --secondary-foreground: #030213;
+  --muted: #ececf0;
+  --muted-foreground: #717182;
+  --accent: #e9ebef;
+  --accent-foreground: #030213;
+  --destructive: #d4183d;
+  --destructive-foreground: #fff;
+  --border: #0000001a;
+  --input: transparent;
+  --input-background: #f3f3f5;
+  --switch-background: #cbced4;
+  --ring: oklch(.708 0 0);
+  --radius: .625rem;
 }
 
 @theme inline {
@@ -16,6 +40,25 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    
+    /* AdIntelligence dark mode variables */
+    --card: oklch(.145 0 0);
+    --card-foreground: oklch(.985 0 0);
+    --popover: oklch(.145 0 0);
+    --popover-foreground: oklch(.985 0 0);
+    --primary: oklch(.985 0 0);
+    --primary-foreground: oklch(.205 0 0);
+    --secondary: oklch(.269 0 0);
+    --secondary-foreground: oklch(.985 0 0);
+    --muted: oklch(.269 0 0);
+    --muted-foreground: oklch(.708 0 0);
+    --accent: oklch(.269 0 0);
+    --accent-foreground: oklch(.985 0 0);
+    --destructive: oklch(.396 .141 25.723);
+    --destructive-foreground: oklch(.637 .237 25.331);
+    --border: oklch(.269 0 0);
+    --input: oklch(.269 0 0);
+    --ring: oklch(.439 0 0);
   }
 }
 
@@ -23,4 +66,53 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Custom markdown styles for chat messages */
+.prose code {
+  @apply bg-zinc-200 dark:bg-zinc-800 px-1 py-0.5 rounded text-sm;
+}
+
+.prose pre {
+  @apply bg-zinc-800 dark:bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto;
+}
+
+.prose pre code {
+  @apply bg-transparent p-0;
+}
+
+.prose a {
+  @apply text-blue-600 dark:text-blue-400 hover:underline;
+}
+
+.prose ul, .prose ol {
+  @apply my-2;
+}
+
+.prose li {
+  @apply my-1;
+}
+
+.prose p {
+  @apply my-2;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+  @apply font-bold mt-4 mb-2;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-zinc-300 dark:border-zinc-600 pl-4 italic;
+}
+
+.prose table {
+  @apply border-collapse w-full my-4;
+}
+
+.prose th, .prose td {
+  @apply border border-zinc-300 dark:border-zinc-600 px-4 py-2;
+}
+
+.prose th {
+  @apply bg-zinc-100 dark:bg-zinc-800 font-bold;
 }
