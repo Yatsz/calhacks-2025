@@ -59,10 +59,12 @@ export function ContentCard({
 
       {type === "image" && thumbnail ? (
         <div className="w-full aspect-video rounded-lg overflow-hidden mb-2 bg-white/30 backdrop-blur-sm">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={thumbnail} alt={name} className="w-full h-full object-cover" />
         </div>
       ) : type === "video" && thumbnail ? (
         <div className="w-full aspect-video rounded-lg overflow-hidden mb-2 bg-white/30 backdrop-blur-sm relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={thumbnail} alt={name} className="w-full h-full object-cover" />
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-8 h-8 rounded-full backdrop-blur-xl bg-white/90 flex items-center justify-center shadow-lg">

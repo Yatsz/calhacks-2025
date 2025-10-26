@@ -24,6 +24,7 @@ export function ContentPreviewModal({ content, onClose }: ContentPreviewModalPro
         <ScrollArea className="max-h-[calc(90vh-80px)]">
           <div className="p-2">
             {content.type === "image" && content.url && (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={content.url}
                 alt={content.name}
