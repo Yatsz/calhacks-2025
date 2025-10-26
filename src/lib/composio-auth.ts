@@ -52,7 +52,7 @@ export async function initiateAuth(
 
     return {
       success: true,
-      redirectUrl: connectionRequest.redirectUrl,
+      redirectUrl: connectionRequest.redirectUrl ?? '',
       connectedAccountId: connectionRequest.id
     };
   } catch (error) {
