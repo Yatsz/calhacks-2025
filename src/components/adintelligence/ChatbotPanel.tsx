@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { useRef, useEffect, useState } from "react";
-import { Send, FileText, Lightbulb, FolderOpen, Sparkles } from "lucide-react";
+import { Send, FileText, Lightbulb, FolderOpen, Sparkles, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,19 @@ interface ReferenceItem {
   data: ContentItem | Campaign;
 }
 
+interface SocialAction {
+  type: "post_to_social";
+  platform: "instagram" | "linkedin" | "twitter";
+  content: string;
+  media?: string;
+}
+
+interface ActionState {
+  action: SocialAction;
+  status: "pending" | "executing" | "success" | "error";
+  message?: string;
+}
+
 interface ChatbotPanelProps {
   campaignContext?: { id: string; caption: string; media: { type: "image" | "video"; url: string; name?: string } | null } | null;
 }
@@ -52,8 +65,6 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
   const [slashMenuItems, setSlashMenuItems] = useState<ReferenceItem[]>([]);
   const [selectedReferences, setSelectedReferences] = useState<ReferenceItem[]>([]);
   const [selectedMenuIndex, setSelectedMenuIndex] = useState(0);
-  const [isLoadingMenu, setIsLoadingMenu] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<"claude-4.5" | "gemini-2.5-flash" | "qwen-3-32b" | "gpt-oss-20b">("claude-4.5");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -220,6 +231,115 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
     setSelectedReferences([]);
   };
 
+  const executeAction = async (action: SocialAction) => {
+    const actionId = Date.now().toString();
+    const newAction: ActionState = {
+      action,
+      status: "executing",
+      message: "Executing action..."
+    };
+    
+    setPendingActions(prev => [...prev, newAction]);
+
+    try {
+      const response = await fetch('/api/execute-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action, 
+          userId: 'user-123' // TODO: Get actual user ID
+        })
+      });
+      
+      const result = await response.json();
+      
+      setPendingActions(prev => 
+        prev.map(a => 
+          a.action === action 
+            ? { ...a, status: result.success ? "success" : "error", message: result.message }
+            : a
+        )
+      );
+    } catch (error) {
+      setPendingActions(prev => 
+        prev.map(a => 
+          a.action === action 
+            ? { ...a, status: "error", message: "Failed to execute action" }
+            : a
+        )
+      );
+    }
+  };
+
+  const parseActionFromText = (text: string): SocialAction | null => {
+    const actionMatch = text.match(/```action\n([\s\S]*?)\n```/);
+    if (actionMatch) {
+      try {
+        return JSON.parse(actionMatch[1]);
+      } catch (error) {
+        console.error('Failed to parse action:', error);
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const renderActionBlock = (action: SocialAction) => {
+    const existingAction = pendingActions.find(a => 
+      a.action.platform === action.platform && 
+      a.action.content === action.content
+    );
+
+    if (existingAction) {
+      return (
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            {existingAction.status === "executing" && <Loader2 className="w-4 h-4 animate-spin text-blue-600" />}
+            {existingAction.status === "success" && <CheckCircle className="w-4 h-4 text-green-600" />}
+            {existingAction.status === "error" && <XCircle className="w-4 h-4 text-red-600" />}
+            <span className="font-medium text-gray-900">
+              Post to {action.platform.charAt(0).toUpperCase() + action.platform.slice(1)}
+            </span>
+          </div>
+          <p className="text-sm text-gray-600 mb-3">{action.content}</p>
+          <div className="text-xs text-gray-500">
+            {existingAction.message}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="font-medium text-gray-900">
+            Ready to post to {action.platform.charAt(0).toUpperCase() + action.platform.slice(1)}
+          </span>
+        </div>
+        <p className="text-sm text-gray-600 mb-3">{action.content}</p>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={() => executeAction(action)}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            <CheckCircle className="w-4 h-4 mr-1" />
+            Execute
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setPendingActions(prev => prev.filter(a => a.action !== action))}
+            className="border-red-300 text-red-600 hover:bg-red-50"
+          >
+            <XCircle className="w-4 h-4 mr-1" />
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="h-full flex flex-col relative">
       <div className="px-6 py-4 border-b border-white/40">
@@ -253,50 +373,13 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                   ) : (
                     <div className="prose prose-sm max-w-none text-gray-900 break-words [&_a]:text-blue-600 [&_a:hover]:text-blue-800 [&_a]:underline [&_code]:text-gray-900 [&_strong]:text-gray-900 [&_em]:text-gray-900">
                       <div className="text-xs font-semibold text-gray-600 mb-2">Assistant</div>
-                      <div className="overflow-wrap-break-word">
-                        {message.parts.map((part, index: number) =>
-                          part.type === 'text' ? (
-                            <ReactMarkdown 
-                              key={index} 
-                              remarkPlugins={[remarkGfm]}
-                              components={{
-                                a: ({ ...props }) => (
-                                  <a {...props} className="!text-blue-600 hover:!text-blue-800 underline" />
-                                ),
-                                p: ({ ...props }) => (
-                                  <p {...props} className="break-words !text-gray-900" />
-                                ),
-                                code: ({ ...props }) => (
-                                  <code {...props} className="!text-gray-900 !bg-gray-100 px-1 py-0.5 rounded" />
-                                ),
-                                strong: ({ ...props }) => (
-                                  <strong {...props} className="!text-gray-900 font-semibold" />
-                                ),
-                                em: ({ ...props }) => (
-                                  <em {...props} className="!text-gray-900" />
-                                ),
-                                li: ({ ...props }) => (
-                                  <li {...props} className="!text-gray-900" />
-                                ),
-                                h1: ({ ...props }) => (
-                                  <h1 {...props} className="!text-gray-900" />
-                                ),
-                                h2: ({ ...props }) => (
-                                  <h2 {...props} className="!text-gray-900" />
-                                ),
-                                h3: ({ ...props }) => (
-                                  <h3 {...props} className="!text-gray-900" />
-                                ),
-                                h4: ({ ...props }) => (
-                                  <h4 {...props} className="!text-gray-900" />
-                                ),
-                              }}
-                            >
-                              {part.text}
-                            </ReactMarkdown>
-                          ) : null
-                        )}
-                      </div>
+                      {message.parts.map((part, index) =>
+                        part.type === 'text' ? (
+                          <ReactMarkdown key={index} remarkPlugins={[remarkGfm]}>
+                            {part.text}
+                          </ReactMarkdown>
+                        ) : null
+                      )}
                     </div>
                   )}
                 </div>
