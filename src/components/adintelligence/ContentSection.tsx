@@ -1,17 +1,12 @@
 import { useState, useEffect } from "react";
-import { ContentCard } from "./ContentCard";
-import { AddContentModal } from "./AddContentModal";
-import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 
-interface ContentItem {
-  id: string;
-  type: "image" | "video" | "pdf" | "text" | "link" | "campaign";
-  name: string;
-  url?: string;
-  thumbnail?: string;
-  text?: string;
-}
+import { ContentCard } from "./ContentCard";
+import { AddContentModal } from "./AddContentModal";
+
+import { ContentItem } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { syncContentWithPostman } from "@/lib/backgroundTasks";
 
 interface Campaign {
   id: string;
@@ -27,10 +22,15 @@ interface ContentSectionProps {
   onContentClick: (content: ContentItem) => void;
 }
 
-export function ContentSection({ title, color, showMediaOnly, onContentClick }: ContentSectionProps) {
+export function ContentSection({
+  title,
+  color,
+  showMediaOnly,
+  onContentClick,
+}: ContentSectionProps) {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const storageKey = `content-${title.toLowerCase().replace(/\s+/g, '-')}`;
+  const storageKey = `content-${title.toLowerCase().replace(/\s+/g, "-")}`;
   const isPastCampaigns = title === "Past Campaigns";
 
   // Load from localStorage on mount and periodically check for updates
@@ -38,22 +38,26 @@ export function ContentSection({ title, color, showMediaOnly, onContentClick }: 
     const loadItems = () => {
       if (isPastCampaigns) {
         // For Past Campaigns, sync with the campaigns localStorage
-        const campaignsStored = localStorage.getItem('campaigns');
+        const campaignsStored = localStorage.getItem("campaigns");
         if (campaignsStored) {
           try {
             const campaigns: Campaign[] = JSON.parse(campaignsStored);
             // Convert campaigns to ContentItem format
-            const campaignItems: ContentItem[] = campaigns.map((campaign: Campaign) => ({
-              id: campaign.id,
-              type: campaign.media?.type === 'video' ? 'video' : 'image',
-              name: campaign.caption ? campaign.caption.substring(0, 50) : 'Untitled Campaign',
-              url: campaign.media?.url,
-              thumbnail: campaign.media?.url,
-              text: campaign.caption,
-            }));
+            const campaignItems: ContentItem[] = campaigns.map(
+              (campaign: Campaign) => ({
+                id: campaign.id,
+                type: campaign.media?.type === "video" ? "video" : "image",
+                name: campaign.caption
+                  ? campaign.caption.substring(0, 50)
+                  : "Untitled Campaign",
+                url: campaign.media?.url,
+                thumbnail: campaign.media?.url,
+                text: campaign.caption,
+              })
+            );
             setItems(campaignItems);
           } catch (e) {
-            console.error('Failed to load campaigns:', e);
+            console.error("Failed to load campaigns:", e);
           }
         }
       } else {
@@ -63,7 +67,7 @@ export function ContentSection({ title, color, showMediaOnly, onContentClick }: 
           try {
             setItems(JSON.parse(stored));
           } catch (e) {
-            console.error('Failed to load content:', e);
+            console.error("Failed to load content:", e);
           }
         }
       }
@@ -82,8 +86,9 @@ export function ContentSection({ title, color, showMediaOnly, onContentClick }: 
   useEffect(() => {
     if (!isPastCampaigns && items.length > 0) {
       localStorage.setItem(storageKey, JSON.stringify(items));
+      syncContentWithPostman(items, title);
     }
-  }, [items, storageKey, isPastCampaigns]);
+  }, [items, storageKey, isPastCampaigns, title]);
 
   const handleAdd = (content: Omit<ContentItem, "id">) => {
     const newItem: ContentItem = {
@@ -134,7 +139,9 @@ export function ContentSection({ title, color, showMediaOnly, onContentClick }: 
 
       {showMediaOnly && items.length > 0 && filteredItems.length === 0 && (
         <div className="text-center py-8">
-          <p className="text-sm text-gray-500">No media files in this section</p>
+          <p className="text-sm text-gray-500">
+            No media files in this section
+          </p>
         </div>
       )}
 

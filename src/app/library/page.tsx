@@ -18,13 +18,13 @@ interface ContentItem {
 
 export default function LibraryPage() {
   const [items, setItems] = useState<ContentItem[]>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('content-content-library');
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("content-content-library");
       if (stored) {
         try {
           return JSON.parse(stored);
         } catch (e) {
-          console.error('Failed to load library:', e);
+          console.error("Failed to load library:", e);
         }
       }
     }
@@ -39,16 +39,16 @@ export default function LibraryPage() {
     };
     const updated = [...items, newItem];
     setItems(updated);
-    localStorage.setItem('content-content-library', JSON.stringify(updated));
+    localStorage.setItem("content-content-library", JSON.stringify(updated));
   };
 
   const handleDelete = (id: string) => {
     const updated = items.filter((item) => item.id !== id);
     setItems(updated);
     if (updated.length === 0) {
-      localStorage.removeItem('content-content-library');
+      localStorage.removeItem("content-content-library");
     } else {
-      localStorage.setItem('content-content-library', JSON.stringify(updated));
+      localStorage.setItem("content-content-library", JSON.stringify(updated));
     }
   };
 
@@ -57,15 +57,20 @@ export default function LibraryPage() {
       {/* Header */}
       <header className="backdrop-blur-2xl bg-white/40 border-b border-white/40 shadow-lg">
         <div className="px-8 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <Image 
-              src="/film.svg" 
-              alt="UGCIntel" 
-              width={24} 
+          <Link
+            href="/"
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
+            <Image
+              src="/film.svg"
+              alt="UGCIntel"
+              width={24}
               height={24}
               className="w-6 h-6"
             />
-            <span className="text-xl font-semibold text-gray-900 tracking-tight">UGCIntel</span>
+            <span className="text-xl font-semibold text-gray-900 tracking-tight">
+              UGCIntel
+            </span>
           </Link>
         </div>
       </header>
@@ -88,7 +93,9 @@ export default function LibraryPage() {
       <div className="container mx-auto px-8 pb-12">
         {items.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-lg text-gray-600 mb-4">No content in library yet</p>
+            <p className="text-lg text-gray-600 mb-4">
+              No content in library yet
+            </p>
             <Button
               onClick={() => setShowModal(true)}
               className="bg-green-600 hover:bg-green-700 text-white"
@@ -130,7 +137,7 @@ export default function LibraryPage() {
                       <p className="text-gray-400">No preview</p>
                     </div>
                   )}
-                  
+
                   {/* Delete button overlay */}
                   <button
                     onClick={() => handleDelete(item.id)}
@@ -145,7 +152,9 @@ export default function LibraryPage() {
                   <p className="text-sm font-medium text-gray-900 truncate">
                     {item.name}
                   </p>
-                  <p className="text-xs text-gray-500 capitalize">{item.type}</p>
+                  <p className="text-xs text-gray-500 capitalize">
+                    {item.type}
+                  </p>
                 </div>
               </div>
             ))}
@@ -161,4 +170,3 @@ export default function LibraryPage() {
     </div>
   );
 }
-

@@ -5,17 +5,10 @@ import { chromaService } from "@/lib/chroma";
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-    const contentType = searchParams.get('type');
-    const query = searchParams.get('q');
-    const limit = parseInt(searchParams.get('limit') || '10');
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: "userId is required" },
-        { status: 400 }
-      );
-    }
+    const userId = searchParams.get("userId") || "default";
+    const title = searchParams.get("title");
+    const query = searchParams.get("q");
+    const limit = parseInt(searchParams.get("limit") || "10");
 
     const collectionName = `user_${userId}`;
 
@@ -26,7 +19,7 @@ export async function GET(request: NextRequest) {
         [query],
         limit
       );
-      
+
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 500 });
       }
@@ -35,27 +28,31 @@ export async function GET(request: NextRequest) {
         success: true,
         userId,
         query,
-        results: result.results
+        results: result.results,
       });
     }
 
     // If content type specified, filter by metadata
-    if (contentType) {
-      const validTypes = ['inspiration', 'past-work', 'current-work'];
-      if (!validTypes.includes(contentType)) {
+    if (title) {
+      const validTitles = ["Inspiration", "Past Campaigns", "Content Library"];
+      if (!validTitles.includes(title)) {
         return NextResponse.json(
-          { error: `Invalid content type. Must be one of: ${validTypes.join(', ')}` },
+          {
+            error: `Invalid content type. Must be one of: ${validTitles.join(
+              ", "
+            )}`,
+          },
           { status: 400 }
         );
       }
 
       const result = await chromaService.queryCollection(
         collectionName,
-        [''], // Empty query to get all
+        [""], // Empty query to get all
         limit,
-        { contentType }
+        { contentType: title }
       );
-      
+
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 500 });
       }
@@ -63,8 +60,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         userId,
-        contentType,
-        results: result.results
+        contentType: title,
+        results: result.results,
       });
     }
 
@@ -77,7 +74,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       userId,
-      data: result.data
+      data: result.data,
     });
   } catch (error) {
     console.error("Error in GET /api/user-content:", error);
@@ -92,15 +89,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { 
+    const {
       userId,
-      content, 
-      contentType, 
-      metadata = {}, 
-      title, 
+      content,
+      contentType,
+      title,
+      metadata = {},
       description,
       tags = [],
-      status = 'draft'
+      status = "draft",
     } = body;
 
     if (!userId || !content || !contentType) {
@@ -110,10 +107,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const validTypes = ['inspiration', 'past-work', 'current-work'];
-    if (!validTypes.includes(contentType)) {
+    const validTypes = ["inspiration", "past-work", "current-work"];
+    if (!validTypes.includes(title)) {
       return NextResponse.json(
-        { error: `Invalid content type. Must be one of: ${validTypes.join(', ')}` },
+        {
+          error: `Invalid content type. Must be one of: ${validTypes.join(
+            ", "
+          )}`,
+        },
         { status: 400 }
       );
     }
@@ -124,27 +125,33 @@ export async function POST(request: NextRequest) {
     const collectionResult = await chromaService.getCollection(collectionName);
     if (!collectionResult.success) {
       // Create user collection if it doesn't exist
-      const createResult = await chromaService.createCollection(collectionName, {
-        userId,
-        description: `Content collection for user ${userId}`,
-        createdAt: new Date().toISOString()
-      });
-      
+      const createResult = await chromaService.createCollection(
+        collectionName,
+        {
+          userId,
+          description: `Content collection for user ${userId}`,
+          createdAt: new Date().toISOString(),
+        }
+      );
+
       if (!createResult.success) {
-        return NextResponse.json({ error: createResult.error }, { status: 500 });
+        return NextResponse.json(
+          { error: createResult.error },
+          { status: 500 }
+        );
       }
     }
 
     // Prepare document metadata
     const documentMetadata = {
       userId,
-      title: title || 'Untitled',
-      description: description || '',
+      title: title || "Untitled",
+      description: description || "",
       tags: tags,
       status: status,
       contentType: contentType,
       createdAt: new Date().toISOString(),
-      ...metadata
+      ...metadata,
     };
 
     // Add content to user's collection
@@ -164,7 +171,7 @@ export async function POST(request: NextRequest) {
       message: `Content added to user ${userId}'s collection`,
       userId,
       contentType,
-      result: result.result
+      result: result.result,
     });
   } catch (error) {
     console.error("Error in POST /api/user-content:", error);
@@ -179,14 +186,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: "userId is required" },
-        { status: 400 }
-      );
-    }
+    const userId = searchParams.get("userId") || "default";
 
     const collectionName = `user_${userId}`;
     const result = await chromaService.deleteCollection(collectionName);
@@ -197,7 +197,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `User ${userId}'s collection deleted successfully`
+      message: `User ${userId}'s collection deleted successfully`,
     });
   } catch (error) {
     console.error("Error in DELETE /api/user-content:", error);

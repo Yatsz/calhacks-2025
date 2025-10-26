@@ -5,12 +5,12 @@ import { getUserId } from "./utils";
 // Background task to sync content with Postman endpoint
 export async function syncContentWithPostman(
   content: ContentItem[],
-  section: string
+  title: string
 ) {
   try {
     // Get existing content from Chroma to check for duplicates using queryCollection with where clause
     const userId = getUserId();
-    const collectionName = `user_${userId}_${section}`;
+    const collectionName = `user_${userId}`;
     const existingFilenames = new Set<string>();
 
     // Query for each content item to check if it already exists
@@ -19,7 +19,7 @@ export async function syncContentWithPostman(
         collectionName,
         [item.name], // Query by filename
         1, // Only need 1 result to check existence
-        { name: item.name, section: item.section } // Where clause to filter by name and section
+        { name: item.name, title } // Where clause to filter by name and title
       );
 
       if (
@@ -53,7 +53,7 @@ export async function syncContentWithPostman(
         content: item.url || item.text || "",
         metadata: {
           collection: collectionName,
-          section: item.section,
+          title,
           contentType: item.type,
           name: item.name,
         },
@@ -75,7 +75,7 @@ export async function syncContentWithPostman(
         body: JSON.stringify({
           workflowName: "content-sync",
           parameters: {
-            sectionName: section,
+            sectionName: title,
             mediaContent,
             timestamp: new Date().toISOString(),
           },
