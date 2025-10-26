@@ -544,7 +544,6 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                 action.platform.slice(1)}
             </span>
           </div>
-          <p className="text-sm text-gray-600 mb-3">{action.content}</p>
           <div className="text-xs text-gray-500">{existingAction.message}</div>
         </div>
       );
