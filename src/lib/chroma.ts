@@ -1,4 +1,10 @@
-import { CloudClient, CollectionMetadata, Metadata, Where } from "chromadb";
+import { CloudClient, Collection, Metadata, Where } from "chromadb";
+
+interface AddDataRequest {
+  ids: string[];
+  documents: string[];
+  metadatas: Metadata[];
+}
 
 // Initialize Chroma Cloud client
 const client = new CloudClient({
@@ -12,77 +18,70 @@ export default client;
 // Utility functions for collection operations
 export class ChromaService {
   private client: CloudClient;
+  private collection: Collection | null;
 
   constructor() {
     this.client = client;
+    this.collection = null;
   }
 
-  // Create a new collection
-  async createCollection(name: string, metadata?: CollectionMetadata) {
-    try {
-      const collection = await this.client.createCollection({
-        name,
-        metadata: metadata || {},
+  getMyCollection = async () => {
+    if (!this.collection) {
+      this.collection = await this.client.getOrCreateCollection({
+        name: "user_default",
       });
-      return { success: true, collection };
-    } catch (error) {
-      console.error("Error creating collection:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
     }
-  }
+    return this.collection;
+  };
 
-  // Get an existing collection
-  async getCollection(name: string) {
+  // Check if document exists in collection by ID
+  async documentExists(id: string): Promise<boolean> {
     try {
-      const collection = await this.client.getCollection({ name });
-      return { success: true, collection };
-    } catch (error) {
-      console.error("Error getting collection:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  }
-
-  // List all collections
-  async listCollections() {
-    try {
-      const collections = await this.client.listCollections();
-      return { success: true, collections };
-    } catch (error) {
-      console.error("Error listing collections:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  }
-
-  // Add documents to a collection
-  async addDocuments(
-    collectionName: string,
-    documents: string[],
-    ids?: string[],
-    metadatas?: Metadata[],
-    embeddings?: number[][]
-  ) {
-    try {
-      const collection = await this.client.getCollection({
-        name: collectionName,
+      const collection = await this.getMyCollection();
+      const result = await collection.get({
+        ids: [id],
       });
+      return result.ids.length > 0;
+    } catch (error) {
+      console.error("Error checking document existence:", error);
+      return false;
+    }
+  }
+
+  // Add documents to a collection (with duplicate prevention)
+  async addDocuments(data: AddDataRequest) {
+    try {
+      const collection = await this.getMyCollection();
+
+      // Filter out duplicates if requested
+      let filteredIds =
+        data.ids || data.documents.map((_, index) => `${Date.now()}_${index}`);
+      let filteredDocuments = data.documents;
+      let filteredMetadatas = data.metadatas;
+
+      const existingChecks = await Promise.all(
+        filteredIds.map((id) => this.documentExists(id))
+      );
+
+      const indicesToKeep = existingChecks
+        .map((exists, index) => (!exists ? index : -1))
+        .filter((index) => index !== -1);
+
+      if (indicesToKeep.length === 0) {
+        return { success: true, result: null, skipped: filteredIds.length };
+      }
+
+      filteredIds = indicesToKeep.map((i) => filteredIds[i]);
+      filteredDocuments = indicesToKeep.map((i) => filteredDocuments[i]);
+      filteredMetadatas = indicesToKeep.map((i) => filteredMetadatas[i]);
 
       const result = await collection.add({
-        documents,
-        ids: ids || documents.map((_, index) => `doc_${Date.now()}_${index}`),
-        metadatas: metadatas || [],
-        embeddings: embeddings || undefined,
+        ids: filteredIds,
+        metadatas: filteredMetadatas,
+        documents: filteredDocuments,
       });
 
-      return { success: true, result };
+      return { success: true, result, added: filteredIds.length };
     } catch (error) {
       console.error("Error adding documents:", error);
       return {
@@ -113,39 +112,6 @@ export class ChromaService {
       return { success: true, results };
     } catch (error) {
       console.error("Error querying collection:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  }
-
-  // Get all documents from a collection
-  async getCollectionData(collectionName: string) {
-    try {
-      const collection = await this.client.getCollection({
-        name: collectionName,
-      });
-
-      const results = await collection.get();
-
-      return { success: true, data: results };
-    } catch (error) {
-      console.error("Error getting collection data:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  }
-
-  // Delete a collection
-  async deleteCollection(name: string) {
-    try {
-      await this.client.deleteCollection({ name });
-      return { success: true };
-    } catch (error) {
-      console.error("Error deleting collection:", error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",

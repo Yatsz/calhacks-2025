@@ -118,6 +118,28 @@ export async function createContentItem(
   return data ? dbContentItemToFrontend(data) : null;
 }
 
+export async function updateContentItem(
+  id: string,
+  updates: {
+    text?: string;
+  }
+) {
+  const dbUpdates: { text_content?: string | null } = {};
+  if (updates.text !== undefined) {
+    dbUpdates.text_content = updates.text;
+  }
+
+  const { data, error } = await supabase
+    .from('content_items')
+    .update(dbUpdates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data ? dbContentItemToFrontend(data) : null;
+}
+
 export async function deleteContentItem(id: string) {
   const { error } = await supabase
     .from('content_items')
@@ -125,6 +147,16 @@ export async function deleteContentItem(id: string) {
     .eq('id', id);
 
   if (error) throw error;
+}
+
+export async function getAllContentItems() {
+  const { data, error } = await supabase
+    .from('content_items')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map(dbContentItemToFrontend);
 }
 
 // ============================================
