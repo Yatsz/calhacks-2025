@@ -3,7 +3,7 @@ import { AnthropicProvider } from "@composio/anthropic";
 // Initialize Composio client
 const composio = new Composio({
     //I AM LOSING TO AN API KEY ISSUE. I WILL DELETE THIS API KEY LATER.
-  apiKey:'ak_UDv8JMOfjuCkaOaQKjU2',
+  apiKey:'ak_1dwDIU6V2j9ytmIPa_ep',
   //apiKey: process.env.COMPOSIO_API_KEY,
   provider: new AnthropicProvider(),
 });

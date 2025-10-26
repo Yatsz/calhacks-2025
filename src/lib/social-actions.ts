@@ -31,12 +31,12 @@ export async function executeSocialAction(
     const composio = getComposioClient();
 
     // Get connected accounts for the user
-    const accounts = await composio.connectedAccounts.list(userId);
+    const accounts = await composio.connectedAccounts.list({ userIds: [userId] });
     console.log('Connected accounts:', accounts);
     
-    const platformAccount = accounts.find(acc => 
-      acc.platform === action.platform || 
-      acc.appName?.toLowerCase().includes(action.platform)
+    const platformAccount = accounts.items.find(acc => 
+      acc.toolkit.slug === action.platform || 
+      acc.toolkit.slug?.toLowerCase().includes(action.platform)
     );
 
     if (!platformAccount) {
@@ -59,17 +59,23 @@ export async function executeSocialAction(
           console.log('Creating Instagram media container with params:', {
             caption: action.content,
             image_url: action.media,
-            media_type: 'IMAGE'
+            content_type: 'photo'
           }); 
+          const userInfoResult = await composio.tools.execute("INSTAGRAM_GET_USER_INFO", {
+            userId,
+            arguments: {} // No parameters needed
+          });
+          
+          const igUserId = userInfoResult.data.id; 
           
           // Step 1: Create media container
-          const mediaResult = await composio.actions.execute({
-            action: 'INSTAGRAM_CREATE_MEDIA_CONTAINER',
-            connectedAccountId: platformAccount.id,
-            params: {
+          const mediaResult = await composio.tools.execute("INSTAGRAM_CREATE_MEDIA_CONTAINER", {
+            userId,
+            arguments: {
+              ig_user_id: igUserId,
               caption: action.content,
-              image_url: action.media,
-              media_type: 'IMAGE'
+              content_type: 'photo',
+              image_url: action.media
             }
           });
           
@@ -82,10 +88,10 @@ export async function executeSocialAction(
           console.log('Creating Instagram post with creation_id:', mediaResult.data.id);
           
           // Step 2: Create post using the creation_id
-          result = await composio.actions.execute({
-            action: 'INSTAGRAM_CREATE_POST',
-            connectedAccountId: platformAccount.id,
-            params: {
+          result = await composio.tools.execute("INSTAGRAM_CREATE_POST", {
+            userId,
+            arguments: {
+              ig_user_id: igUserId,
               creation_id: mediaResult.data.id
             }
           });
