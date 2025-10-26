@@ -1,8 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 // Create a single supabase client for interacting with your database
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
@@ -10,7 +10,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export interface Campaign {
   id: string;
   caption: string;
-  media_type: 'image' | 'video' | null;
+  media_type: "image" | "video" | null;
   media_url: string | null;
   media_name: string | null;
   created_at: string;
@@ -19,8 +19,8 @@ export interface Campaign {
 
 export interface ContentItem {
   id: string;
-  category: 'inspiration' | 'content-library';
-  type: 'image' | 'video' | 'pdf' | 'text' | 'link' | 'campaign';
+  category: "inspiration" | "content-library";
+  type: "image" | "video" | "pdf" | "text" | "link" | "campaign";
   name: string;
   url: string | null;
   thumbnail: string | null;
@@ -32,7 +32,7 @@ export interface ContentItem {
 export interface ChatMessage {
   id: string;
   campaign_id: string | null;
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
   created_at: string;
 }
@@ -42,11 +42,13 @@ export function dbCampaignToFrontend(dbCampaign: Campaign) {
   return {
     id: dbCampaign.id,
     caption: dbCampaign.caption,
-    media: dbCampaign.media_url ? {
-      type: dbCampaign.media_type as 'image' | 'video',
-      url: dbCampaign.media_url,
-      name: dbCampaign.media_name || undefined,
-    } : null,
+    media: dbCampaign.media_url
+      ? {
+          type: dbCampaign.media_type as "image" | "video",
+          url: dbCampaign.media_url,
+          name: dbCampaign.media_name || undefined,
+        }
+      : null,
     createdAt: dbCampaign.created_at,
   };
 }
@@ -54,7 +56,7 @@ export function dbCampaignToFrontend(dbCampaign: Campaign) {
 // Helper function to convert frontend campaign to database format
 export function frontendCampaignToDb(campaign: {
   caption: string;
-  media: { type: 'image' | 'video'; url: string; name?: string } | null;
+  media: { type: "image" | "video"; url: string; name?: string } | null;
 }) {
   return {
     caption: campaign.caption,
@@ -72,20 +74,21 @@ export function dbContentItemToFrontend(dbItem: ContentItem) {
     name: dbItem.name,
     url: dbItem.url || undefined,
     thumbnail: dbItem.thumbnail || undefined,
-    text: dbItem.text_content || undefined,
+    caption: "", // Content items don't have user captions, only campaigns do
+    summary: dbItem.text_content || undefined, // AI-generated summary
   };
 }
 
 // Helper function to convert frontend content item to database format
 export function frontendContentItemToDb(
   item: {
-    type: 'image' | 'video' | 'pdf' | 'text' | 'link' | 'campaign';
+    type: "image" | "video" | "pdf" | "text" | "link" | "campaign";
     name: string;
     url?: string;
     thumbnail?: string;
-    text?: string;
+    summary?: string;
   },
-  category: 'inspiration' | 'content-library'
+  category: "inspiration" | "content-library"
 ) {
   return {
     category,
@@ -93,7 +96,6 @@ export function frontendContentItemToDb(
     name: item.name,
     url: item.url || null,
     thumbnail: item.thumbnail || null,
-    text_content: item.text || null,
+    text_content: item.summary || null, // Store AI summary in text_content
   };
 }
-

@@ -17,7 +17,8 @@ interface AddContentModalProps {
     type: "image" | "video" | "text" | "link" | "campaign";
     name: string;
     url?: string;
-    text?: string;
+    caption: string;
+    summary?: string;
     thumbnail?: string;
   }) => void;
 }
@@ -81,6 +82,7 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
           name: file.name,
           url: videoUrl,
           thumbnail: thumbnailUrl,
+          caption: "",
         });
         toast.success("Video uploaded successfully!");
       } else {
@@ -92,6 +94,7 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
           name: file.name,
           url,
           thumbnail: url,
+          caption: "",
         });
         toast.success("Image uploaded successfully!");
       }
@@ -110,7 +113,8 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
       onAdd({
         type: "text",
         name: nameInput || "Text Content",
-        text: textInput,
+        caption: textInput,
+        summary: textInput, // For text content, caption and summary are the same
       });
       handleClose();
     } else if (selectedType === "link" && linkInput.trim()) {
@@ -140,6 +144,7 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
             name: nameInput || data.filename,
             url: data.videoUrl,
             thumbnail: data.thumbnail || data.videoUrl,
+            caption: "",
           });
           handleClose();
         } catch (error) {
@@ -153,7 +158,8 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
           type: "link",
           name: nameInput || "Link Content",
           url: linkInput,
-          text: linkInput,
+          caption: linkInput,
+          summary: linkInput,
         });
         handleClose();
       }
@@ -161,7 +167,7 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
       onAdd({
         type: "campaign",
         name: nameInput || "Campaign",
-        text: campaignCaption,
+        caption: campaignCaption,
       });
       handleClose();
     }

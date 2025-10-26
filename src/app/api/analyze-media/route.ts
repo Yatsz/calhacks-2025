@@ -100,11 +100,11 @@ export async function POST(req: Request) {
           role: "user",
           content: [
             {
-              type: "text" as const,
+              type: "text",
               text: `${promptIntro} Summarize what you see in one paragraph, focusing on details that a performance marketer would care about.`,
             },
             {
-              type: "file" as const,
+              type: "file",
               data: fileUrl,
               mediaType,
               filename: name,

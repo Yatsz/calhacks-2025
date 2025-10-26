@@ -1,13 +1,10 @@
 import {
   supabase,
-  Campaign,
-  ContentItem,
-  ChatMessage,
   dbCampaignToFrontend,
   frontendCampaignToDb,
   dbContentItemToFrontend,
   frontendContentItemToDb,
-} from './supabase';
+} from "./supabase";
 
 // ============================================
 // CAMPAIGN OPERATIONS
@@ -15,9 +12,9 @@ import {
 
 export async function getAllCampaigns() {
   const { data, error } = await supabase
-    .from('campaigns')
-    .select('*')
-    .order('created_at', { ascending: false });
+    .from("campaigns")
+    .select("*")
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
   return (data || []).map(dbCampaignToFrontend);
@@ -25,9 +22,9 @@ export async function getAllCampaigns() {
 
 export async function getCampaignById(id: string) {
   const { data, error } = await supabase
-    .from('campaigns')
-    .select('*')
-    .eq('id', id)
+    .from("campaigns")
+    .select("*")
+    .eq("id", id)
     .single();
 
   if (error) throw error;
@@ -36,12 +33,12 @@ export async function getCampaignById(id: string) {
 
 export async function createCampaign(campaign: {
   caption: string;
-  media: { type: 'image' | 'video'; url: string; name?: string } | null;
+  media: { type: "image" | "video"; url: string; name?: string } | null;
 }) {
   const dbCampaign = frontendCampaignToDb(campaign);
-  
+
   const { data, error } = await supabase
-    .from('campaigns')
+    .from("campaigns")
     .insert(dbCampaign)
     .select()
     .single();
@@ -54,27 +51,22 @@ export async function updateCampaign(
   id: string,
   campaign: {
     caption: string;
-    media: { type: 'image' | 'video'; url: string; name?: string } | null;
+    media: { type: "image" | "video"; url: string; name?: string } | null;
   }
 ) {
   const dbCampaign = frontendCampaignToDb(campaign);
-  
   const { data, error } = await supabase
-    .from('campaigns')
+    .from("campaigns")
     .update(dbCampaign)
-    .eq('id', id)
+    .eq("id", id)
     .select()
     .single();
-
   if (error) throw error;
   return data ? dbCampaignToFrontend(data) : null;
 }
 
 export async function deleteCampaign(id: string) {
-  const { error } = await supabase
-    .from('campaigns')
-    .delete()
-    .eq('id', id);
+  const { error } = await supabase.from("campaigns").delete().eq("id", id);
 
   if (error) throw error;
 }
@@ -84,13 +76,13 @@ export async function deleteCampaign(id: string) {
 // ============================================
 
 export async function getContentItemsByCategory(
-  category: 'inspiration' | 'content-library'
+  category: "inspiration" | "content-library"
 ) {
   const { data, error } = await supabase
-    .from('content_items')
-    .select('*')
-    .eq('category', category)
-    .order('created_at', { ascending: false });
+    .from("content_items")
+    .select("*")
+    .eq("category", category)
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
   return (data || []).map(dbContentItemToFrontend);
@@ -98,18 +90,18 @@ export async function getContentItemsByCategory(
 
 export async function createContentItem(
   item: {
-    type: 'image' | 'video' | 'pdf' | 'text' | 'link' | 'campaign';
+    type: "image" | "video" | "pdf" | "text" | "link" | "campaign";
     name: string;
     url?: string;
     thumbnail?: string;
-    text?: string;
+    summary?: string;
   },
-  category: 'inspiration' | 'content-library'
+  category: "inspiration" | "content-library"
 ) {
   const dbItem = frontendContentItemToDb(item, category);
-  
+
   const { data, error } = await supabase
-    .from('content_items')
+    .from("content_items")
     .insert(dbItem)
     .select()
     .single();
@@ -121,18 +113,18 @@ export async function createContentItem(
 export async function updateContentItem(
   id: string,
   updates: {
-    text?: string;
+    summary?: string;
   }
 ) {
   const dbUpdates: { text_content?: string | null } = {};
-  if (updates.text !== undefined) {
-    dbUpdates.text_content = updates.text;
+  if (updates.summary !== undefined) {
+    dbUpdates.text_content = updates.summary;
   }
 
   const { data, error } = await supabase
-    .from('content_items')
+    .from("content_items")
     .update(dbUpdates)
-    .eq('id', id)
+    .eq("id", id)
     .select()
     .single();
 
@@ -141,19 +133,16 @@ export async function updateContentItem(
 }
 
 export async function deleteContentItem(id: string) {
-  const { error } = await supabase
-    .from('content_items')
-    .delete()
-    .eq('id', id);
+  const { error } = await supabase.from("content_items").delete().eq("id", id);
 
   if (error) throw error;
 }
 
 export async function getAllContentItems() {
   const { data, error } = await supabase
-    .from('content_items')
-    .select('*')
-    .order('created_at', { ascending: false });
+    .from("content_items")
+    .select("*")
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
   return (data || []).map(dbContentItemToFrontend);
@@ -165,24 +154,24 @@ export async function getAllContentItems() {
 
 export async function getChatMessagesByCampaign(campaignId: string | null) {
   const query = supabase
-    .from('chat_messages')
-    .select('*')
-    .order('created_at', { ascending: true });
+    .from("chat_messages")
+    .select("*")
+    .order("created_at", { ascending: true });
 
   // If campaignId is null, get messages without a campaign
   if (campaignId === null) {
-    query.is('campaign_id', null);
+    query.is("campaign_id", null);
   } else {
-    query.eq('campaign_id', campaignId);
+    query.eq("campaign_id", campaignId);
   }
 
   const { data, error } = await query;
 
   if (error) throw error;
-  
+
   return (data || []).map((msg) => ({
     id: msg.id,
-    role: msg.role as 'user' | 'assistant',
+    role: msg.role as "user" | "assistant",
     content: msg.content,
     timestamp: msg.created_at,
   }));
@@ -190,11 +179,11 @@ export async function getChatMessagesByCampaign(campaignId: string | null) {
 
 export async function createChatMessage(message: {
   campaignId: string | null;
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
 }) {
   const { data, error } = await supabase
-    .from('chat_messages')
+    .from("chat_messages")
     .insert({
       campaign_id: message.campaignId,
       role: message.role,
@@ -207,11 +196,13 @@ export async function createChatMessage(message: {
   return data;
 }
 
-export async function bulkCreateChatMessages(messages: Array<{
-  campaignId: string | null;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-}>) {
+export async function bulkCreateChatMessages(
+  messages: Array<{
+    campaignId: string | null;
+    role: "user" | "assistant" | "system";
+    content: string;
+  }>
+) {
   const dbMessages = messages.map((msg) => ({
     campaign_id: msg.campaignId,
     role: msg.role,
@@ -219,7 +210,7 @@ export async function bulkCreateChatMessages(messages: Array<{
   }));
 
   const { data, error } = await supabase
-    .from('chat_messages')
+    .from("chat_messages")
     .insert(dbMessages)
     .select();
 
@@ -229,9 +220,9 @@ export async function bulkCreateChatMessages(messages: Array<{
 
 export async function deleteChatMessagesByCampaign(campaignId: string) {
   const { error } = await supabase
-    .from('chat_messages')
+    .from("chat_messages")
     .delete()
-    .eq('campaign_id', campaignId);
+    .eq("campaign_id", campaignId);
 
   if (error) throw error;
 }
@@ -251,4 +242,3 @@ export async function getCampaignWithChatHistory(campaignId: string) {
     chatHistory: chatMessages,
   };
 }
-

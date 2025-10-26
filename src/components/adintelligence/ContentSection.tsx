@@ -13,6 +13,87 @@ import { AddContentModal } from "./AddContentModal";
 import { ContentItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 
+/**
+ * Ensures a content item is processed and added to Chroma
+ * If it's media content without a summary, generates one via Gemini first
+ */
+async function ensureContentInChroma(item: {
+  id: string;
+  type: "image" | "video" | "pdf" | "text" | "link" | "campaign";
+  url?: string;
+  name: string;
+  caption: string;
+  summary?: string;
+  category: string;
+}) {
+  try {
+    let summary = item.summary || "";
+
+    // Check if summary is just the filename (invalid summary)
+    const isInvalidSummary =
+      !summary || summary === item.name || summary.length < 20;
+
+    // If it's media content and doesn't have a valid summary, generate one via Gemini
+    if (
+      isInvalidSummary &&
+      (item.type === "image" || item.type === "video") &&
+      item.url
+    ) {
+      console.log(
+        `Generating AI summary for ${item.type} ${item.id}: ${item.name}`
+      );
+      try {
+        const response = await fetch("/api/analyze-media", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: item.url,
+            type: item.type,
+            name: item.name,
+          }),
+        });
+        if (response.ok) {
+          const data: { summary?: string } = await response.json();
+          summary = data.summary || "";
+          console.log(
+            `Generated AI summary for ${item.id}: ${summary.substring(
+              0,
+              100
+            )}...`
+          );
+        } else {
+          console.warn(
+            `Failed to analyze ${item.id}, status:`,
+            response.status
+          );
+        }
+      } catch (error) {
+        console.warn("Failed to analyze media with Gemini:", error);
+      }
+    } else {
+      console.log(
+        `Using existing summary for ${item.id}: ${summary.substring(0, 50)}...`
+      );
+    }
+
+    // Process and add to Chroma (with duplicate prevention)
+    await fetch("/api/process-content", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: item.id,
+        type: item.type,
+        url: item.url,
+        name: item.name,
+        category: item.category,
+        summary,
+      }),
+    });
+  } catch (error) {
+    console.warn(`Failed to ensure content ${item.id} in Chroma:`, error);
+  }
+}
+
 interface ContentSectionProps {
   title: string;
   color: string;
@@ -40,34 +121,28 @@ export function ContentSection({
           const campaigns = await getAllCampaigns();
           const campaignItems: ContentItem[] = campaigns.map((campaign) => ({
             id: campaign.id,
-            type: campaign.media?.type === "video" ? "video" : "image",
+            type: campaign.media?.type || "text",
             name: campaign.caption
               ? campaign.caption.substring(0, 50)
               : "Untitled Campaign",
             url: campaign.media?.url,
             thumbnail: campaign.media?.url,
-            text: campaign.caption,
+            caption: campaign.caption,
+            summary: undefined, // Don't use caption as summary - let it be generated from media
           }));
           setItems(campaignItems);
 
           // Ensure campaigns are in Chroma (background process)
+          // This will generate summaries from the media content, not use captions
           campaignItems.forEach((item) => {
-            fetch("/api/process-content", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                id: item.id,
-                type: item.type,
-                url: item.url,
-                name: item.name,
-                category: "campaigns",
-                summary: item.text || item.name,
-              }),
-            }).catch((error) => {
-              console.warn(
-                `Failed to sync campaign ${item.id} to Chroma:`,
-                error
-              );
+            ensureContentInChroma({
+              id: item.id,
+              type: item.type,
+              url: item.url,
+              name: item.name,
+              caption: item.caption,
+              summary: undefined, // Force generation from media
+              category: "campaigns",
             });
           });
         } else {
@@ -77,22 +152,14 @@ export function ContentSection({
 
           // Ensure content items are in Chroma (background process)
           contentItems.forEach((item) => {
-            fetch("/api/process-content", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                id: item.id,
-                type: item.type,
-                url: item.url,
-                name: item.name,
-                category,
-                summary: item.text || item.name,
-              }),
-            }).catch((error) => {
-              console.warn(
-                `Failed to sync content ${item.id} to Chroma:`,
-                error
-              );
+            ensureContentInChroma({
+              id: item.id,
+              type: item.type,
+              url: item.url,
+              name: item.name,
+              caption: item.caption,
+              summary: item.summary,
+              category,
             });
           });
         }
@@ -105,7 +172,7 @@ export function ContentSection({
 
     // If it's Past Campaigns, set up an interval to check for updates
     if (isPastCampaigns) {
-      const interval = setInterval(loadItems, 3000); // Check every 3 seconds
+      const interval = setInterval(loadItems, 60000); // Check every 60 seconds
       return () => clearInterval(interval);
     }
   }, [category, isPastCampaigns]);
@@ -114,9 +181,9 @@ export function ContentSection({
     if (isPastCampaigns) return; // Can't add directly to past campaigns
 
     try {
-      // Step 1: Insert to Supabase immediately with empty text field
+      // Step 1: Insert to Supabase immediately with empty summary field
       const newItem = await createContentItem(
-        { ...content, text: undefined },
+        { ...content, summary: undefined },
         category
       );
 
@@ -124,49 +191,16 @@ export function ContentSection({
         // Update UI immediately
         setItems((prev) => [newItem, ...prev]);
 
-        // Step 2: Process in background (fire and forget)
-        (async () => {
-          try {
-            let summary = content.text || "";
-
-            // Analyze media if it's an image or video
-            if (
-              (content.type === "image" || content.type === "video") &&
-              content.url
-            ) {
-              const response = await fetch("/api/analyze-media", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  url: content.url,
-                  type: content.type,
-                  name: content.name,
-                }),
-              });
-
-              if (response.ok) {
-                const data: { summary?: string } = await response.json();
-                summary = data.summary || "";
-              }
-            }
-
-            // Update Supabase and Chroma in background
-            await fetch("/api/process-content", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                id: newItem.id,
-                type: content.type,
-                url: content.url,
-                name: content.name,
-                category,
-                summary,
-              }),
-            });
-          } catch (error) {
-            console.warn("Background processing failed:", error);
-          }
-        })();
+        // Step 2: Process in background using the abstracted function
+        ensureContentInChroma({
+          id: newItem.id,
+          type: content.type,
+          url: content.url,
+          name: content.name,
+          caption: content.caption,
+          summary: content.summary,
+          category,
+        });
       }
     } catch (error) {
       console.error("Failed to create content item:", error);

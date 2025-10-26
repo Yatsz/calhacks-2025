@@ -6,5 +6,6 @@ export interface ContentItem {
   name: string;
   url?: string;
   thumbnail?: string;
-  text?: string;
+  caption: string;
+  summary?: string;
 }

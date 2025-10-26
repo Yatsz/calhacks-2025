@@ -19,24 +19,39 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Use provided summary if available, otherwise use name as fallback
-    const summary = providedSummary || name || "No description available";
+    const summary = providedSummary || "";
 
-    // Update Supabase with the summary (async)
+    // Update Supabase with the summary (only if we have one)
     if (summary) {
       try {
-        await updateContentItem(id, { text: summary });
+        await updateContentItem(id, { summary });
+        console.log(`Updated Supabase for ${id} with summary`);
       } catch (error) {
         console.error("Failed to update Supabase:", error);
       }
     }
 
-    // Add to Chroma
+    // Add to Chroma (only if we have a valid summary)
+    // For media items, we should only add to Chroma after AI analysis
     try {
-      const documentText = summary || name || "No description available";
+      if (!summary) {
+        console.log(`Skipping Chroma for ${id}: No summary available yet`);
+        return NextResponse.json({
+          success: true,
+          summary: "",
+          chromaResult: { skipped: true, reason: "No summary available" },
+        });
+      }
+
+      console.log(
+        `Adding to Chroma for ${id} with summary: ${summary.substring(
+          0,
+          100
+        )}...`
+      );
       const result = await chromaService.addDocuments({
         ids: [id],
-        documents: [documentText],
+        documents: [summary],
         metadatas: [
           {
             type,

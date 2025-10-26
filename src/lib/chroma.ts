@@ -1,4 +1,5 @@
-import { CloudClient, Collection, Metadata, Where } from "chromadb";
+import { CloudClient, Collection, Metadata } from "chromadb";
+import { GoogleGeminiEmbeddingFunction } from "@chroma-core/google-gemini";
 
 interface AddDataRequest {
   ids: string[];
@@ -29,6 +30,9 @@ export class ChromaService {
     if (!this.collection) {
       this.collection = await this.client.getOrCreateCollection({
         name: "user_default",
+        embeddingFunction: new GoogleGeminiEmbeddingFunction({
+          apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+        }),
       });
     }
     return this.collection;
@@ -84,34 +88,6 @@ export class ChromaService {
       return { success: true, result, added: filteredIds.length };
     } catch (error) {
       console.error("Error adding documents:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  }
-
-  // Query documents from a collection
-  async queryCollection(
-    collectionName: string,
-    queryTexts: string[],
-    nResults: number = 5,
-    where?: Where
-  ) {
-    try {
-      const collection = await this.client.getCollection({
-        name: collectionName,
-      });
-
-      const results = await collection.query({
-        queryTexts,
-        nResults,
-        where,
-      });
-
-      return { success: true, results };
-    } catch (error) {
-      console.error("Error querying collection:", error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
