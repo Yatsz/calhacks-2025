@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import { getCampaignById } from "@/lib/db";
 import { Header } from "@/components/adintelligence/Header";
 import { ChatbotPanel } from "@/components/adintelligence/ChatbotPanel";
 import { CampaignEditor } from "@/components/adintelligence/CampaignEditor";
@@ -31,7 +32,30 @@ export default function AdIntelligencePage() {
     null
   );
   const [activeTab, setActiveTab] = useState("inspiration");
+  const [campaignContext, setCampaignContext] = useState<{ id: string; caption: string; media: { type: "image" | "video"; url: string; name?: string } | null } | null>(null);
   const editingCampaignId = searchParams.get('edit');
+
+  // Load campaign context when editing a campaign
+  useEffect(() => {
+    (async () => {
+      if (editingCampaignId && typeof window !== 'undefined') {
+        try {
+          const campaign = await getCampaignById(editingCampaignId);
+          if (campaign) {
+            setCampaignContext({
+              id: campaign.id,
+              caption: campaign.caption,
+              media: campaign.media,
+            });
+          }
+        } catch (error) {
+          console.error('Error loading campaign context:', error);
+        }
+      } else {
+        setCampaignContext(null);
+      }
+    })();
+  }, [editingCampaignId]);
 
   const activeColor =
     contentTypes.find((t) => t.id === activeTab)?.color || "#669CE4";
@@ -151,7 +175,7 @@ export default function AdIntelligencePage() {
 
           {/* Right Panel - AI Assistant */}
           <div className="w-80 backdrop-blur-2xl bg-white/30 border border-white/40 rounded-3xl shadow-xl overflow-hidden">
-            <ChatbotPanel />
+            <ChatbotPanel campaignContext={campaignContext} />
           </div>
         </div>
       </div>
