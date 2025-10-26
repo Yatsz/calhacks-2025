@@ -36,8 +36,13 @@ export function ContentPreviewModal({ content, onClose }: ContentPreviewModalPro
               <video
                 src={content.url}
                 controls
+                controlsList="nodownload"
+                preload="metadata"
                 className="w-full rounded-lg"
-              />
+              >
+                <source src={content.url} type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
             )}
 
             {content.type === "pdf" && content.url && (

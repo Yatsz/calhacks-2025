@@ -36,6 +36,68 @@ export default function HomePage() {
           </Link>
         </div>
 
+            <ScrollArea className="flex-1">
+              <div className="py-6">
+                <Tabs value={activeTab} className="w-full">
+                  <TabsContent value="inspiration" className="mt-0">
+                    <ContentSection
+                      title="Inspiration"
+                      color="#669CE4"
+                      showMediaOnly={showMediaOnly}
+                      onContentClick={setSelectedContent}
+                      items={contentItems.inspiration}
+                      onItemsChange={(items) => setContentItems(prev => ({ ...prev, inspiration: items }))}
+                    />
+                  </TabsContent>
+                  <TabsContent value="campaigns" className="mt-0">
+                    <ContentSection
+                      title="Past Campaigns"
+                      color="#8462CF"
+                      showMediaOnly={showMediaOnly}
+                      onContentClick={setSelectedContent}
+                      items={contentItems.campaigns}
+                      onItemsChange={(items) => setContentItems(prev => ({ ...prev, campaigns: items }))}
+                    />
+                  </TabsContent>
+                  <TabsContent value="library" className="mt-0">
+                    <ContentSection
+                      title="Content Library"
+                      color="#3FB855"
+                      showMediaOnly={showMediaOnly}
+                      onContentClick={setSelectedContent}
+                      items={contentItems.library}
+                      onItemsChange={(items) => setContentItems(prev => ({ ...prev, library: items }))}
+                    />
+                  </TabsContent>
+                </Tabs>
+              </div>
+            </ScrollArea>
+
+            {/* Link Input Bar */}
+            <div className="px-6 py-4 border-t border-white/40">
+              <div className="flex gap-2">
+                <Input
+                  value={linkInput}
+                  onChange={(e) => setLinkInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !isDownloading && linkInput.trim() && handleLinkSubmit()}
+                  placeholder="Paste Instagram or TikTok link..."
+                  className="flex-1 backdrop-blur-xl bg-white/50 border-white/60 text-gray-900 placeholder:text-gray-500"
+                  disabled={isDownloading}
+                />
+                <Button
+                  onClick={handleLinkSubmit}
+                  size="icon"
+                  disabled={!linkInput.trim() || isDownloading}
+                  className="bg-gray-900 hover:bg-gray-800 shadow-lg text-white disabled:opacity-50"
+                >
+                  {isDownloading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Link className="w-4 h-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-12">
           <div className="backdrop-blur-xl bg-white/60 rounded-2xl p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Content Library</h3>
