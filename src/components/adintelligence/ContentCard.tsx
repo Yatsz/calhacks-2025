@@ -34,9 +34,17 @@ export function ContentCard({
     }
   };
 
+  const handleDragStart = (e: React.DragEvent) => {
+    const data = JSON.stringify({ id, type, name, url, thumbnail, text });
+    e.dataTransfer.setData('content-item', data);
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
   return (
     <div
       onClick={onClick}
+      draggable={type === 'image' || type === 'video'}
+      onDragStart={handleDragStart}
       className="group relative backdrop-blur-xl bg-white/50 border border-white/60 rounded-xl p-3 cursor-pointer hover:bg-white/70 hover:shadow-lg transition-all"
     >
       <button

@@ -1,0 +1,164 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import { AddContentModal } from "@/components/adintelligence/AddContentModal";
+import { Plus, Trash2 } from "lucide-react";
+
+interface ContentItem {
+  id: string;
+  type: "image" | "video" | "pdf" | "text" | "link" | "campaign";
+  name: string;
+  url?: string;
+  thumbnail?: string;
+  text?: string;
+}
+
+export default function LibraryPage() {
+  const [items, setItems] = useState<ContentItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('content-content-library');
+      if (stored) {
+        try {
+          return JSON.parse(stored);
+        } catch (e) {
+          console.error('Failed to load library:', e);
+        }
+      }
+    }
+    return [];
+  });
+  const [showModal, setShowModal] = useState(false);
+
+  const handleAdd = (content: Omit<ContentItem, "id">) => {
+    const newItem: ContentItem = {
+      ...content,
+      id: Date.now().toString() + Math.random(),
+    };
+    const updated = [...items, newItem];
+    setItems(updated);
+    localStorage.setItem('content-content-library', JSON.stringify(updated));
+  };
+
+  const handleDelete = (id: string) => {
+    const updated = items.filter((item) => item.id !== id);
+    setItems(updated);
+    if (updated.length === 0) {
+      localStorage.removeItem('content-content-library');
+    } else {
+      localStorage.setItem('content-content-library', JSON.stringify(updated));
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+      {/* Header */}
+      <header className="backdrop-blur-2xl bg-white/40 border-b border-white/40 shadow-lg">
+        <div className="px-8 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <Image 
+              src="/film.svg" 
+              alt="UGCIntel" 
+              width={24} 
+              height={24}
+              className="w-6 h-6"
+            />
+            <span className="text-xl font-semibold text-gray-900 tracking-tight">UGCIntel</span>
+          </Link>
+        </div>
+      </header>
+
+      {/* Page Header */}
+      <div className="container mx-auto px-8 pt-8 pb-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-gray-900">Content Library</h1>
+          <Button
+            onClick={() => setShowModal(true)}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add New
+          </Button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="container mx-auto px-8 pb-12">
+        {items.length === 0 ? (
+          <div className="text-center py-20">
+            <p className="text-lg text-gray-600 mb-4">No content in library yet</p>
+            <Button
+              onClick={() => setShowModal(true)}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              Add Your First Content
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
+            {items.map((item) => (
+              <div
+                key={item.id}
+                className="backdrop-blur-xl bg-white/60 rounded-xl border border-white/60 shadow-lg overflow-hidden hover:shadow-xl transition-shadow group"
+              >
+                {/* Preview */}
+                <div className="aspect-square bg-gray-100 relative">
+                  {item.type === "image" && item.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.url}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : item.type === "video" && item.thumbnail ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.thumbnail}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : item.type === "text" ? (
+                    <div className="w-full h-full flex items-center justify-center p-4">
+                      <p className="text-sm text-gray-700 line-clamp-6">
+                        {item.text}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <p className="text-gray-400">No preview</p>
+                    </div>
+                  )}
+                  
+                  {/* Delete button overlay */}
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-red-600"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Name */}
+                <div className="p-3">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {item.name}
+                  </p>
+                  <p className="text-xs text-gray-500 capitalize">{item.type}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <AddContentModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        onAdd={handleAdd}
+      />
+    </div>
+  );
+}
+
