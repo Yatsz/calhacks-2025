@@ -1,4 +1,4 @@
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface ContentItem {
@@ -20,6 +20,7 @@ export function ContentPreviewModal({ content, onClose }: ContentPreviewModalPro
   return (
     <Dialog open={!!content} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] backdrop-blur-2xl bg-white/80 border-white/60 shadow-2xl">
+        <DialogTitle className="sr-only">{content.name}</DialogTitle>
         <ScrollArea className="max-h-[calc(90vh-80px)]">
           <div className="p-2">
             {content.type === "image" && content.url && (

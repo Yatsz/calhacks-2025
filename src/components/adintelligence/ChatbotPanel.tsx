@@ -188,7 +188,7 @@ export function ChatbotPanel() {
           <div className="flex h-full items-center mt-70 justify-center">
             <div className="text-center">
               <p className="text-lg font-medium text-gray-900">
-                Let's build your campaign
+                Let&apos;s build your campaign
               </p>
             </div>
           </div>

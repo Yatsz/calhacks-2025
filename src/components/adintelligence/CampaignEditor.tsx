@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,38 +18,39 @@ interface CampaignEditorProps {
 export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
   const router = useRouter();
   const [isDragging, setIsDragging] = useState(false);
-  
-  // Initialize campaign ID directly from prop
-  const [currentCampaignId, setCurrentCampaignId] = useState<string | null>(editingCampaignId || null);
-  
-  // Initialize state from localStorage if editing
-  const [media, setMedia] = useState<{ type: "image" | "video"; url: string; name?: string } | null>(() => {
+  const [currentCampaignId, setCurrentCampaignId] = useState<string | null>(null);
+  const [media, setMedia] = useState<{ type: "image" | "video"; url: string; name?: string } | null>(null);
+  const [caption, setCaption] = useState<string>("");
+
+  // Load campaign when editingCampaignId changes
+  const loadCampaign = useCallback(() => {
     if (editingCampaignId && typeof window !== 'undefined') {
       const stored = localStorage.getItem('campaigns');
       if (stored) {
         const campaigns: Campaign[] = JSON.parse(stored);
         const campaign = campaigns.find(c => c.id === editingCampaignId);
         if (campaign) {
-          return campaign.media;
+          // Batch state updates using setTimeout to avoid React warning
+          setTimeout(() => {
+            setMedia(campaign.media);
+            setCaption(campaign.caption);
+            setCurrentCampaignId(campaign.id);
+          }, 0);
         }
       }
+    } else {
+      // Reset for new campaign
+      setTimeout(() => {
+        setMedia(null);
+        setCaption("");
+        setCurrentCampaignId(null);
+      }, 0);
     }
-    return null;
-  });
-  
-  const [caption, setCaption] = useState<string>(() => {
-    if (editingCampaignId && typeof window !== 'undefined') {
-      const stored = localStorage.getItem('campaigns');
-      if (stored) {
-        const campaigns: Campaign[] = JSON.parse(stored);
-        const campaign = campaigns.find(c => c.id === editingCampaignId);
-        if (campaign) {
-          return campaign.caption;
-        }
-      }
-    }
-    return "";
-  });
+  }, [editingCampaignId]);
+
+  useEffect(() => {
+    loadCampaign();
+  }, [loadCampaign]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -68,6 +69,25 @@ export function CampaignEditor({ editingCampaignId }: CampaignEditorProps) {
     const data = e.dataTransfer.getData('content-item');
     if (data) {
       const item = JSON.parse(data);
+      
+      // Check if it's a campaign being dragged (from Past Campaigns)
+      if (item.text && item.text.length > 50) {
+        // It's likely a campaign - load the full campaign from localStorage
+        const stored = localStorage.getItem('campaigns');
+        if (stored) {
+          const campaigns: Campaign[] = JSON.parse(stored);
+          const campaign = campaigns.find((c: Campaign) => c.id === item.id);
+          if (campaign) {
+            // Replace the entire campaign
+            setMedia(campaign.media);
+            setCaption(campaign.caption);
+            setCurrentCampaignId(null); // Create as new campaign, not edit
+            return;
+          }
+        }
+      }
+      
+      // Regular media item
       if (item.type === 'image' || item.type === 'video') {
         setMedia({
           type: item.type,
