@@ -601,14 +601,7 @@ async function tryHandleCompetitorAnalysis(
       };
 
       writer.write({ type: "start", messageId, messageMetadata: metadata });
-
       writer.write({ type: "text-start", id: textPartId });
-      writer.write({
-        type: "text-delta",
-        id: textPartId,
-        delta:
-          "BrightData competitor intelligence ready. Open the mindmap overlay to explore connections, sources, and trends.",
-      });
 
       let payload: CompetitorAnalysisPayload | undefined;
       let errorMessage: string | undefined;

@@ -165,10 +165,6 @@ export function CompetitorMindmapOverlay({
               />
             )}
           </div>
-
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-sky-100" />
-          </div>
         </div>
       </ScrollArea>
     </OverlayShell>
@@ -207,7 +203,7 @@ function OverlayShell({
         }
       }}
     >
-      <div className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-3xl border border-sky-100 bg-linear-to-br from-white via-sky-50 to-white shadow-2xl">
+      <div className="relative flex h-full w-full max-w-5xl max-h-[90vh] flex-col overflow-hidden rounded-3xl border border-sky-100 bg-linear-to-br from-white via-sky-50 to-white shadow-2xl">
         <button
           type="button"
           onClick={onClose}
@@ -217,7 +213,7 @@ function OverlayShell({
           <X className="h-4 w-4" />
         </button>
 
-        <div className="flex flex-wrap items-start justify-between gap-6 border-b border-white/70 bg-white/60 px-8 py-6 pr-16">
+        <div className="flex flex-none flex-wrap items-start justify-between gap-6 border-b border-white/70 bg-white/60 px-8 py-6 pr-16">
           <div>
             <div className="flex items-center gap-3">
               <Badge
@@ -248,7 +244,7 @@ function OverlayShell({
         </div>
 
         {showErrorBanner && errorMessage && (
-          <div className="border-b border-red-100 bg-red-50 px-8 py-3 text-sm text-red-700">
+          <div className="flex-none border-b border-red-100 bg-red-50 px-8 py-3 text-sm text-red-700">
             {errorMessage}
           </div>
         )}

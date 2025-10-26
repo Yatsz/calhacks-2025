@@ -252,23 +252,6 @@ function formatReferenceContext(references: ReferenceItem[]) {
   return context;
 }
 
-function formatGeneratedLabel(timestamp: string) {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "just now";
-
-  const now = Date.now();
-  const diffMs = date.getTime() - now;
-  const diffMinutes = Math.round(diffMs / 60000);
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-
-  if (Math.abs(diffMinutes) < 60) return rtf.format(diffMinutes, "minute");
-
-  const diffHours = Math.round(diffMs / 3600000);
-  if (Math.abs(diffHours) < 24) return rtf.format(diffHours, "hour");
-
-  return date.toLocaleString();
-}
-
 /*****************
  * Components
  *****************/
@@ -514,47 +497,104 @@ function CompetitorAnalysisPreview({
   data: CompetitorAnalysisDataPart;
   onOpen: () => void;
 }) {
-  const insightsCount = data.payload?.searchInsights.length ?? 0;
-  const trendSummary = data.payload?.googleTrends;
-  const trendLabel = trendSummary?.success
-    ? `${trendSummary.interestOverTime.length} points • ${trendSummary.topRegions.length} regions`
-    : "Unavailable";
-  const durationLabel =
-    typeof data.durationMs === "number"
-      ? `${Math.max(0.1, data.durationMs / 1000).toFixed(1)}s`
-      : undefined;
+  const hasSnapshot = Boolean(data.payload) && !data.error;
+  type SnapshotState = "ready" | "pending" | "error";
+  const snapshotState: SnapshotState = data.error
+    ? "error"
+    : hasSnapshot
+    ? "ready"
+    : "pending";
+
+  const stateMeta: Record<
+    SnapshotState,
+    {
+      cardClass: string;
+      badgeClass: string;
+      accentClass: string;
+      calloutClass: string;
+      message: string;
+      statusLabel: string;
+    }
+  > = {
+    ready: {
+      cardClass: "border-sky-200 bg-sky-50/70",
+      badgeClass: "border-sky-200 bg-white text-sky-600",
+      accentClass: "text-sky-600",
+      calloutClass: "border-sky-200 bg-white/60 text-sky-700",
+      message: "BrightData snapshot ready. Open to view the full analysis.",
+      statusLabel: "Ready",
+    },
+    pending: {
+      cardClass: "border-amber-200 bg-amber-50/70",
+      badgeClass: "border-amber-200 bg-amber-100 text-amber-700",
+      accentClass: "text-amber-600",
+      calloutClass: "border-amber-200 bg-white/70 text-amber-700",
+      message: "Generating BrightData snapshot…",
+      statusLabel: "Preparing",
+    },
+    error: {
+      cardClass: "border-red-200 bg-red-50/80",
+      badgeClass: "border-red-200 bg-red-100 text-red-700",
+      accentClass: "text-red-600",
+      calloutClass: "border-red-200 bg-red-50 text-red-700",
+      message: "",
+      statusLabel: "Error",
+    },
+  };
+
+  const {
+    cardClass,
+    badgeClass,
+    accentClass,
+    calloutClass,
+    message,
+    statusLabel,
+  } = stateMeta[snapshotState];
+  const isClickable = snapshotState === "ready";
 
   const handleOpen = () => {
-    if (!data.error) onOpen();
+    if (isClickable) onOpen();
   };
 
   return (
     <div
-      role="button"
-      tabIndex={0}
+      role={isClickable ? "button" : undefined}
+      aria-disabled={!isClickable}
+      tabIndex={isClickable ? 0 : -1}
       onClick={handleOpen}
       onKeyDown={(event) => {
-        if ((event.key === "Enter" || event.key === " ") && !data.error) {
+        if (!isClickable) return;
+        if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onOpen();
+          handleOpen();
         }
       }}
-      className="rounded-xl border border-sky-200 bg-white/70 p-4 shadow-sm outline-none transition-transform hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-sky-400 cursor-pointer"
+      className={`rounded-xl border p-4 shadow-sm outline-none transition ${
+        cardClass
+      } ${
+        isClickable
+          ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-sky-400"
+          : snapshotState === "pending"
+          ? "cursor-wait"
+          : "cursor-default"
+      }`}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] uppercase tracking-wide text-sky-600 font-semibold">
+          <p
+            className={`text-[11px] uppercase tracking-wide font-semibold ${accentClass}`}
+          >
             BrightData Competitor Snapshot
           </p>
-          <h4 className="mt-1 text-base font-semibold text-gray-900">
+          <h4 className="mt-1 text-sm font-semibold text-gray-900 line-clamp-2">
             {data.query}
           </h4>
         </div>
         <Badge
           variant="outline"
-          className="border-sky-200 bg-sky-50 text-sky-700"
+          className={badgeClass}
         >
-          BrightData
+          {statusLabel}
         </Badge>
       </div>
 
@@ -563,31 +603,20 @@ function CompetitorAnalysisPreview({
           {data.error}
         </div>
       ) : (
-        <div className="mt-4 grid gap-3 text-sm text-gray-700 md:grid-cols-2">
-          <div className="rounded-lg border border-white/70 bg-white/60 px-3 py-2 shadow-inner">
-            <p className="text-xs uppercase tracking-wide text-gray-500">
-              Web signals
-            </p>
-            <p className="text-sm font-semibold text-gray-900">
-              {insightsCount}
-            </p>
-          </div>
-          <div className="rounded-lg border border-white/70 bg-white/60 px-3 py-2 shadow-inner">
-            <p className="text-xs uppercase tracking-wide text-gray-500">
-              Trend coverage
-            </p>
-            <p className="text-sm font-semibold text-gray-900">{trendLabel}</p>
-          </div>
+        <div
+          className={`mt-4 rounded-lg border px-3 py-3 text-sm shadow-inner ${calloutClass}`}
+        >
+          {message}
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
-        <span>
-          Generated {formatGeneratedLabel(data.generatedAt)} via BrightData
-          {durationLabel ? ` • ${durationLabel}` : ""}
-        </span>
-        {!data.error && <span className="text-sky-600">Click to expand</span>}
-      </div>
+      {isClickable && (
+        <div
+          className={`mt-4 text-xs font-semibold uppercase tracking-wide ${accentClass}`}
+        >
+          Click to open snapshot
+        </div>
+      )}
     </div>
   );
 }
