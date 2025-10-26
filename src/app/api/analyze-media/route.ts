@@ -15,6 +15,8 @@ type AnalyzeRequest = {
   url?: string;
   type?: "image" | "video";
   name?: string;
+  id?: string; // Content item ID for updating after analysis
+  category?: string; // Category for Chroma processing
 };
 
 type AnalyzeResponse =
@@ -23,6 +25,10 @@ type AnalyzeResponse =
     }
   | {
       error: string;
+    }
+  | {
+      accepted: true;
+      message: string;
     };
 
 async function resolveMediaType(
@@ -47,39 +53,21 @@ function assertGeminiConfigured(): void {
   }
 }
 
-export async function POST(req: Request) {
+/**
+ * Background processing function that analyzes media with Gemini
+ * and automatically updates the database and Chroma
+ */
+async function processMediaAnalysis(
+  url: string,
+  type: "image" | "video",
+  name: string | undefined,
+  id: string | undefined,
+  category: string | undefined
+): Promise<void> {
   try {
-    assertGeminiConfigured();
+    console.log(`[Background] Starting media analysis for ${id || url}`);
 
-    const body: AnalyzeRequest = await req.json();
-    const { url, type, name } = body;
-
-    if (!url || !type) {
-      return new Response(
-        JSON.stringify({
-          error: "Missing url or type.",
-        } satisfies AnalyzeResponse),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    let fileUrl: URL;
-    try {
-      fileUrl = new URL(url);
-    } catch {
-      return new Response(
-        JSON.stringify({
-          error: "Invalid media URL.",
-        } satisfies AnalyzeResponse),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
+    const fileUrl = new URL(url);
 
     const mediaType =
       type === "image"
@@ -117,23 +105,102 @@ export async function POST(req: Request) {
     const summary = text?.trim();
 
     if (!summary) {
+      console.error(`[Background] Gemini did not return a summary for: ${url}`);
+      return;
+    }
+
+    console.log(`[Background] Generated summary for ${id || url}: ${summary.substring(0, 100)}...`);
+
+    // If we have an ID and category, automatically update the database and Chroma
+    // This calls process-content which handles both Supabase update and Chroma insertion
+    // NOTE: This is the ONLY path for media items to reach process-content
+    // (ensureContentInChroma skips media with summaries to prevent duplicate processing)
+    if (id && category) {
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-content`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id,
+              type,
+              url,
+              name,
+              category,
+              summary,
+            }),
+          }
+        );
+
+        if (response.ok) {
+          console.log(`[Background] Successfully processed content for ${id}`);
+        } else {
+          console.error(`[Background] Failed to process content for ${id}:`, response.status);
+        }
+      } catch (error) {
+        console.error(`[Background] Failed to call process-content for ${id}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error("[Background] Failed to analyze media with Gemini:", error);
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    assertGeminiConfigured();
+
+    const body: AnalyzeRequest = await req.json();
+    const { url, type, name, id, category } = body;
+
+    // Quick validation and exit path
+    if (!url || !type) {
       return new Response(
         JSON.stringify({
-          error: "Gemini did not return a summary.",
+          error: "Missing url or type.",
         } satisfies AnalyzeResponse),
         {
-          status: 502,
+          status: 400,
           headers: { "Content-Type": "application/json" },
         }
       );
     }
 
-    return new Response(JSON.stringify({ summary } satisfies AnalyzeResponse), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch {
+      return new Response(
+        JSON.stringify({
+          error: "Invalid media URL.",
+        } satisfies AnalyzeResponse),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Start background processing without waiting
+    // This will analyze the media and automatically update DB + Chroma
+    processMediaAnalysis(url, type, name, id, category).catch((error) => {
+      console.error("Background media analysis failed:", error);
     });
+
+    // Return immediately with accepted status
+    return new Response(
+      JSON.stringify({
+        accepted: true,
+        message: "Media analysis job accepted and processing in background",
+      }),
+      {
+        status: 202, // 202 Accepted
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   } catch (error) {
-    console.error("Failed to analyze media with Gemini:", error);
+    console.error("Failed to accept media analysis job:", error);
     return new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : "Unexpected error",

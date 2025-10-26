@@ -58,8 +58,7 @@ export class ChromaService {
       const collection = await this.getMyCollection();
 
       // Filter out duplicates if requested
-      let filteredIds =
-        data.ids || data.documents.map((_, index) => `${Date.now()}_${index}`);
+      let filteredIds = data.ids;
       let filteredDocuments = data.documents;
       let filteredMetadatas = data.metadatas;
 

@@ -8,8 +8,11 @@ import type {
   TrendPoint,
 } from "@/types/competitor-analysis";
 
-const ANTHROPIC_API_URL = process.env.CLAUDE_COMPETITOR_ENDPOINT ?? "https://api.anthropic.com/v1/messages";
-const CLAUDE_MODEL = process.env.CLAUDE_COMPETITOR_MODEL ?? "claude-4-5-sonnet-20241022";
+const ANTHROPIC_API_URL =
+  process.env.CLAUDE_COMPETITOR_ENDPOINT ??
+  "https://api.anthropic.com/v1/messages";
+const CLAUDE_MODEL =
+  process.env.CLAUDE_COMPETITOR_MODEL ?? "claude-4-5-sonnet-20241022";
 const CLAUDE_WEBSEARCH_BETA = (() => {
   const value = process.env.CLAUDE_WEBSEARCH_BETA?.trim();
   return value ? value : undefined;
@@ -22,7 +25,8 @@ const CLAUDE_MAX_OUTPUT_TOKENS = (() => {
   }
   return 1600;
 })();
-const CLAUDE_WEBSEARCH_ENABLED = process.env.CLAUDE_COMPETITOR_DISABLE_WEB_SEARCH === "" ? false : true;
+const CLAUDE_WEBSEARCH_ENABLED =
+  process.env.CLAUDE_COMPETITOR_DISABLE_WEB_SEARCH === "" ? false : true;
 
 interface ClaudeMessageResponse {
   content: Array<{ type: string; text?: string }>;
@@ -38,7 +42,9 @@ interface ClaudeStructuredPayload {
 /**
  * Builds a competitor analysis payload by delegating research to Claude with web search enabled.
  */
-export async function buildCompetitorAnalysisPayload(query: string): Promise<CompetitorAnalysisPayload> {
+export async function buildCompetitorAnalysisPayload(
+  query: string
+): Promise<CompetitorAnalysisPayload> {
   const trimmedQuery = query?.trim();
   if (!trimmedQuery) {
     throw new Error("Competitor analysis query is required.");
@@ -62,7 +68,9 @@ interface ClaudeRequestAttempt {
   allowToolFallback?: boolean;
 }
 
-async function callClaudeWebSearch(query: string): Promise<ClaudeStructuredPayload> {
+async function callClaudeWebSearch(
+  query: string
+): Promise<ClaudeStructuredPayload> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error("ANTHROPIC_API_KEY is not configured.");
@@ -71,7 +79,8 @@ async function callClaudeWebSearch(query: string): Promise<ClaudeStructuredPaylo
   const baseHeaders: Record<string, string> = {
     "Content-Type": "application/json",
     "x-api-key": apiKey,
-    "anthropic-version": process.env.CLAUDE_COMPETITOR_API_VERSION ?? "2023-06-01",
+    "anthropic-version":
+      process.env.CLAUDE_COMPETITOR_API_VERSION ?? "2023-06-01",
   };
 
   const attempts: ClaudeRequestAttempt[] = [];
@@ -119,15 +128,20 @@ async function callClaudeWebSearch(query: string): Promise<ClaudeStructuredPaylo
         const errorText = await response.text();
         const normalizedError = errorText.toLowerCase();
         const isBetaRejection = normalizedError.includes("anthropic-beta");
-        const isToolRejection = normalizedError.includes("web_search") || normalizedError.includes("tool");
+        const isToolRejection =
+          normalizedError.includes("web_search") ||
+          normalizedError.includes("tool");
 
         const attemptError = new Error(
-          `Claude web search request failed (${response.status} ${response.statusText}): ${errorText || "unknown error"
-          }`
+          `Claude web search request failed (${response.status} ${
+            response.statusText
+          }): ${errorText || "unknown error"}`
         );
 
         if (attempt.allowToolFallback && (isBetaRejection || isToolRejection)) {
-          console.warn(`Claude attempt "${attempt.label}" rejected; retrying without web search tools.`);
+          console.warn(
+            `Claude attempt "${attempt.label}" rejected; retrying without web search tools.`
+          );
           lastError = attemptError;
           continue;
         }
@@ -140,7 +154,9 @@ async function callClaudeWebSearch(query: string): Promise<ClaudeStructuredPaylo
       const parsed = safeJsonParse(rawText);
 
       if (!parsed || typeof parsed !== "object") {
-        throw new Error("Claude web search returned an unexpected payload shape.");
+        throw new Error(
+          "Claude web search returned an unexpected payload shape."
+        );
       }
 
       if (attempt.label !== "baseline") {
@@ -171,7 +187,7 @@ function buildUserPrompt(query: string) {
     '     "url": string;',
     '     "source"?: string;',
     '     "publishedAt"?: string;',
-    '  }>; // at least 3 distinct URLs from the past 12 months',
+    "  }>; // at least 3 distinct URLs from the past 12 months",
     '  "googleTrends": {',
     '     "success": boolean;',
     '     "request": { "query": string; "geo": string; "dateRange": string; "widgets": string; };',
@@ -179,7 +195,7 @@ function buildUserPrompt(query: string) {
     '     "topRegions": Array<{ "region": string; "value": number; }>;',
     '     "rawExcerpt"?: string;',
     '     "error"?: string;',
-    '  };',
+    "  };",
     '  "searchRaw"?: unknown; // optional debug metadata or retrieved snippets',
     "}",
     "",
@@ -188,16 +204,19 @@ function buildUserPrompt(query: string) {
   ].join("\n");
 }
 
-function buildClaudeRequestBody(query: string, options: { includeWebSearchTool: boolean }) {
+function buildClaudeRequestBody(
+  query: string,
+  options: { includeWebSearchTool: boolean }
+) {
   const tools = options.includeWebSearchTool
     ? [
-      {
-        type: "web_search",
-        name: "web_search",
-        description:
-          "Search the live web for up-to-date competitor information, recent campaigns, pricing changes, and market activity.",
-      },
-    ]
+        {
+          type: "web_search",
+          name: "web_search",
+          description:
+            "Search the live web for up-to-date competitor information, recent campaigns, pricing changes, and market activity.",
+        },
+      ]
     : undefined;
 
   const body: Record<string, unknown> = {
@@ -234,7 +253,11 @@ function extractTextContent(response: ClaudeMessageResponse) {
   }
 
   for (const item of response.content) {
-    if (item.type === "text" && typeof item.text === "string" && item.text.trim().length > 0) {
+    if (
+      item.type === "text" &&
+      typeof item.text === "string" &&
+      item.text.trim().length > 0
+    ) {
       return stripCodeFence(item.text.trim());
     }
   }
@@ -250,12 +273,18 @@ function stripCodeFence(payload: string) {
   return payload;
 }
 
-function normalizeClaudePayload(query: string, payload: ClaudeStructuredPayload): CompetitorAnalysisPayload {
+function normalizeClaudePayload(
+  query: string,
+  payload: ClaudeStructuredPayload
+): CompetitorAnalysisPayload {
   const insights = normalizeSearchInsights(payload.searchInsights);
   const trends = normalizeTrends(payload.googleTrends, query);
 
   return {
-    query: payload.query && typeof payload.query === "string" ? payload.query : query,
+    query:
+      payload.query && typeof payload.query === "string"
+        ? payload.query
+        : query,
     searchInsights: insights,
     searchRaw: payload.searchRaw ?? payload,
     googleTrends: trends,
@@ -270,10 +299,17 @@ function normalizeSearchInsights(value: unknown): SearchInsight[] {
   const dedupe = new Set<string>();
 
   return value
-    .map((item) => (item && typeof item === "object" ? (item as Record<string, unknown>) : null))
-    .filter(Boolean)
+    .map((item) =>
+      item && typeof item === "object"
+        ? (item as Record<string, unknown>)
+        : null
+    )
+    .filter((item): item is Record<string, unknown> => Boolean(item))
     .map((item) => {
-      const title = coerceString(item!.title) ?? coerceString(item!.snippet) ?? "Untitled insight";
+      const title =
+        coerceString(item!.title) ??
+        coerceString(item!.snippet) ??
+        "Untitled insight";
       const url = coerceString(item!.url);
       if (!url) return null;
 
@@ -286,26 +322,34 @@ function normalizeSearchInsights(value: unknown): SearchInsight[] {
         return null;
       }
       dedupe.add(dedupeKey);
-
-      return {
+      const result: SearchInsight = {
         title,
         snippet,
         url,
-        source: source || inferSourceFromUrl(url),
-        publishedAt: publishedAt ?? undefined,
-      } satisfies SearchInsight;
+      };
+      const sourceValue = source || inferSourceFromUrl(url);
+      if (sourceValue) result.source = sourceValue;
+      if (publishedAt) result.publishedAt = publishedAt;
+
+      return result;
     })
-    .filter((item): item is SearchInsight => Boolean(item))
+    .filter((item): item is SearchInsight => item !== null)
     .slice(0, 6);
 }
 
 function normalizeTrends(value: unknown, query: string): GoogleTrendsSummary {
   if (!value || typeof value !== "object") {
-    return buildEmptyTrendSummary(query, "BrightData service did not return trend data.");
+    return buildEmptyTrendSummary(
+      query,
+      "BrightData service did not return trend data."
+    );
   }
 
   const data = value as Record<string, unknown>;
-  const request = data.request && typeof data.request === "object" ? (data.request as Record<string, unknown>) : {};
+  const request =
+    data.request && typeof data.request === "object"
+      ? (data.request as Record<string, unknown>)
+      : {};
 
   const normalizedRequest = {
     query: coerceString(request.query) ?? query,
@@ -316,9 +360,10 @@ function normalizeTrends(value: unknown, query: string): GoogleTrendsSummary {
 
   const interestOverTime = normalizeTrendPoints(data.interestOverTime);
   const topRegions = normalizeRegionInterest(data.topRegions);
-  const success = interestOverTime.length > 0 || topRegions.length > 0
-    ? Boolean(data.success ?? true)
-    : Boolean(data.success ?? false);
+  const success =
+    interestOverTime.length > 0 || topRegions.length > 0
+      ? Boolean(data.success ?? true)
+      : Boolean(data.success ?? false);
 
   return {
     success,
@@ -336,10 +381,17 @@ function normalizeTrendPoints(value: unknown): TrendPoint[] {
   }
 
   return value
-    .map((item) => (item && typeof item === "object" ? (item as Record<string, unknown>) : null))
+    .map((item) =>
+      item && typeof item === "object"
+        ? (item as Record<string, unknown>)
+        : null
+    )
     .filter(Boolean)
     .map((item) => {
-      const label = coerceString(item!.label) ?? coerceString(item!.time) ?? coerceString(item!.formattedTime);
+      const label =
+        coerceString(item!.label) ??
+        coerceString(item!.time) ??
+        coerceString(item!.formattedTime);
       const valueNum = coerceNumber(item!.value);
       if (!label || valueNum === undefined) return null;
       return {
@@ -357,7 +409,11 @@ function normalizeRegionInterest(value: unknown): RegionInterest[] {
   }
 
   return value
-    .map((item) => (item && typeof item === "object" ? (item as Record<string, unknown>) : null))
+    .map((item) =>
+      item && typeof item === "object"
+        ? (item as Record<string, unknown>)
+        : null
+    )
     .filter(Boolean)
     .map((item) => {
       const region =
@@ -376,7 +432,10 @@ function normalizeRegionInterest(value: unknown): RegionInterest[] {
     .slice(0, 10);
 }
 
-function buildEmptyTrendSummary(query: string, error?: string): GoogleTrendsSummary {
+function buildEmptyTrendSummary(
+  query: string,
+  error?: string
+): GoogleTrendsSummary {
   return {
     success: false,
     request: {
@@ -440,7 +499,9 @@ function buildBrightDataFriendlyError(error: unknown) {
   if (error instanceof Error) {
     const statusMatch = error.message.match(/\((\d{3}[^)]*)\)/);
     const statusNote = statusMatch ? statusMatch[1].trim() : undefined;
-    return `BrightData service request failed${statusNote ? ` (${statusNote})` : ""}. Please try again later.`;
+    return `BrightData service request failed${
+      statusNote ? ` (${statusNote})` : ""
+    }. Please try again later.`;
   }
   return "BrightData service request failed. Please try again later.";
 }

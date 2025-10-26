@@ -15,9 +15,9 @@ import { Button } from "@/components/ui/button";
 
 /**
  * Ensures a content item is processed and added to Chroma
- * If it's media content without a summary, generates one via Gemini first
+ * Fires non-blocking background jobs that handle the entire pipeline
  */
-async function ensureContentInChroma(item: {
+function ensureContentInChroma(item: {
   id: string;
   type: "image" | "video" | "pdf" | "text" | "link" | "campaign";
   url?: string;
@@ -26,58 +26,43 @@ async function ensureContentInChroma(item: {
   summary?: string;
   category: string;
 }) {
-  try {
-    let summary = item.summary || "";
+  // Check if summary is just the filename (invalid summary)
+  const isInvalidSummary =
+    !item.summary || item.summary === item.name || item.summary.length < 20;
 
-    // Check if summary is just the filename (invalid summary)
-    const isInvalidSummary =
-      !summary || summary === item.name || summary.length < 20;
+  const isMediaType = item.type === "image" || item.type === "video";
 
-    // If it's media content and doesn't have a valid summary, generate one via Gemini
-    if (
-      isInvalidSummary &&
-      (item.type === "image" || item.type === "video") &&
-      item.url
-    ) {
-      console.log(
-        `Generating AI summary for ${item.type} ${item.id}: ${item.name}`
-      );
-      try {
-        const response = await fetch("/api/analyze-media", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: item.url,
-            type: item.type,
-            name: item.name,
-          }),
-        });
-        if (response.ok) {
-          const data: { summary?: string } = await response.json();
-          summary = data.summary || "";
-          console.log(
-            `Generated AI summary for ${item.id}: ${summary.substring(
-              0,
-              100
-            )}...`
-          );
-        } else {
-          console.warn(
-            `Failed to analyze ${item.id}, status:`,
-            response.status
-          );
-        }
-      } catch (error) {
-        console.warn("Failed to analyze media with Gemini:", error);
-      }
-    } else {
-      console.log(
-        `Using existing summary for ${item.id}: ${summary.substring(0, 50)}...`
-      );
-    }
+  // If it's media content without a valid summary, use analyze-media endpoint
+  // which will automatically handle the entire pipeline (AI analysis -> DB update -> Chroma)
+  if (isInvalidSummary && isMediaType && item.url) {
+    console.log(
+      `[Non-blocking] Triggering AI analysis for ${item.type} ${item.id}: ${item.name}`
+    );
 
-    // Process and add to Chroma (with duplicate prevention)
-    await fetch("/api/process-content", {
+    // Fire and forget - this returns immediately with 202 Accepted
+    // analyze-media will call process-content internally after generating summary
+    fetch("/api/analyze-media", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: item.url,
+        type: item.type,
+        name: item.name,
+        id: item.id,
+        category: item.category,
+      }),
+    }).catch((error) => {
+      console.warn(`Failed to trigger analysis for ${item.id}:`, error);
+    });
+  } else if (item.summary && !isMediaType) {
+    // ONLY for non-media content with valid summaries, directly process
+    // Media items with summaries are skipped to avoid duplicate processing
+    console.log(
+      `[Non-blocking] Processing non-media content with existing summary for ${item.id}`
+    );
+
+    // Fire and forget - this returns immediately with 202 Accepted
+    fetch("/api/process-content", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -86,11 +71,20 @@ async function ensureContentInChroma(item: {
         url: item.url,
         name: item.name,
         category: item.category,
-        summary,
+        summary: item.summary,
       }),
+    }).catch((error) => {
+      console.warn(`Failed to trigger processing for ${item.id}:`, error);
     });
-  } catch (error) {
-    console.warn(`Failed to ensure content ${item.id} in Chroma:`, error);
+  } else if (isMediaType && item.summary) {
+    // Media with summary - already processed, skip to avoid duplicate
+    console.log(
+      `[Non-blocking] Skipping ${item.id}: Media already has summary (already processed)`
+    );
+  } else {
+    console.log(
+      `[Non-blocking] Skipping ${item.id}: No summary and not media content`
+    );
   }
 }
 

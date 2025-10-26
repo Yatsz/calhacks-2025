@@ -125,11 +125,20 @@ export async function updateContentItem(
     .from("content_items")
     .update(dbUpdates)
     .eq("id", id)
-    .select()
-    .single();
+    .select();
 
-  if (error) throw error;
-  return data ? dbContentItemToFrontend(data) : null;
+  if (error) {
+    console.error(`Failed to update content item ${id}:`, error);
+    throw error;
+  }
+
+  // Check if any rows were updated
+  if (!data || data.length === 0) {
+    console.warn(`No content item found with id: ${id}`);
+    return null;
+  }
+
+  return dbContentItemToFrontend(data[0]);
 }
 
 export async function deleteContentItem(id: string) {
