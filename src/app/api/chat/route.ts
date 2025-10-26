@@ -44,6 +44,7 @@ export async function POST(req: Request) {
     // Extract metadata from the last user message
     let campaignContext: { id: string; caption: string; media: { type: "image" | "video"; url: string; name?: string } | null } | undefined;
     let model: string | undefined;
+    let toolApproval: { approved: boolean; toolName: string; parameters: Record<string, unknown> } | undefined;
 
     // Find the last user message and extract metadata
     const lastUserMessage = messages.filter(m => m.role === 'user').pop();
@@ -52,6 +53,20 @@ export async function POST(req: Request) {
       const textPart = lastUserMessage.parts.find((p: { type: string }) => p.type === 'text') as { text?: string } | undefined;
       if (textPart?.text) {
         console.log('🔍 [API] Message text:', textPart.text);
+
+        // Check for tool approval
+        const approvalMatch = textPart.text.match(/<!--TOOL_APPROVAL:([\s\S]+?)-->/);
+        if (approvalMatch) {
+          console.log('🔍 [API] Found tool approval:', approvalMatch[1]);
+          try {
+            toolApproval = JSON.parse(approvalMatch[1]);
+            textPart.text = textPart.text.replace(/\n\n<!--TOOL_APPROVAL:[\s\S]+?-->/, '');
+            console.log('✅ [API] Tool approval:', toolApproval);
+          } catch (e) {
+            console.error('❌ [API] Failed to parse tool approval:', e);
+          }
+        }
+
         const metadataMatch = textPart.text.match(/<!--METADATA:([\s\S]+?)-->/);
         if (metadataMatch) {
           console.log('🔍 [API] Found metadata match:', metadataMatch[1]);
@@ -77,6 +92,103 @@ export async function POST(req: Request) {
     }
 
     console.log('🟢 [API] Messages count:', messages.length);
+
+    const sendImmediateMessage = (text: string, metadata?: CompetitorAnalysisMetadata | undefined) => {
+      const stream = createUIMessageStream({
+        execute: async ({ writer }) => {
+          const messageId = crypto.randomUUID();
+          const textPartId = `${messageId}-text`;
+
+          writer.write({
+            type: 'start',
+            messageId,
+            messageMetadata: metadata,
+          });
+
+          writer.write({ type: 'text-start', id: textPartId });
+          writer.write({ type: 'text-delta', id: textPartId, delta: text });
+          writer.write({ type: 'text-end', id: textPartId });
+          writer.write({ type: 'finish' });
+        },
+      });
+
+      return createUIMessageStreamResponse({ stream });
+    };
+
+    if (toolApproval && !campaignContext) {
+      console.warn('⚠️ [API] Tool approval received without campaign context');
+      toolApproval = undefined;
+      return sendImmediateMessage('⚠️ Unable to update campaign: no active campaign context.');
+    }
+
+    if (toolApproval && campaignContext && toolApproval.toolName === 'updateCampaign') {
+      const params = toolApproval.parameters ?? {};
+      const requestedCaption = typeof params.caption === 'string' ? params.caption : undefined;
+      const mediaType =
+        typeof params.mediaType === 'string' &&
+        (params.mediaType === 'image' || params.mediaType === 'video')
+          ? params.mediaType
+          : undefined;
+      const mediaUrl = typeof params.mediaUrl === 'string' ? params.mediaUrl : undefined;
+      const mediaName = typeof params.mediaName === 'string' ? params.mediaName : undefined;
+
+      if (toolApproval.approved) {
+        console.log('✅ [API] Processing approved updateCampaign tool call');
+
+        try {
+          const updateData: {
+            caption: string;
+            media: { type: 'image' | 'video'; url: string; name?: string } | null;
+          } = {
+            caption: campaignContext.caption,
+            media: campaignContext.media,
+          };
+
+          if (requestedCaption !== undefined) {
+            updateData.caption = requestedCaption;
+          }
+
+          if (mediaType && mediaUrl) {
+            updateData.media = {
+              type: mediaType,
+              url: mediaUrl,
+              name: mediaName,
+            };
+          }
+
+          await updateCampaign(campaignContext.id, updateData);
+          console.log('✅ [API] Campaign updated via approval');
+
+          const confirmationLines: string[] = ['✅ Campaign updated successfully.'];
+
+          if (requestedCaption !== undefined) {
+            const formattedCaption = requestedCaption
+              .split('\n')
+              .map((line) => `> ${line}`)
+              .join('\n');
+
+            confirmationLines.push(`**New caption:**\n${formattedCaption}`);
+          }
+
+          if (mediaType && mediaUrl) {
+            confirmationLines.push(`**Media updated:** ${mediaType} • ${mediaUrl}`);
+          }
+
+          toolApproval = undefined;
+          return sendImmediateMessage(confirmationLines.join('\n\n'));
+        } catch (error) {
+          console.error('❌ [API] Failed to update campaign after approval:', error);
+          toolApproval = undefined;
+          return sendImmediateMessage(
+            '⚠️ Failed to update the campaign after approval. Please try again.'
+          );
+        }
+      } else {
+        console.log('🚫 [API] updateCampaign tool call rejected by user');
+        toolApproval = undefined;
+        return sendImmediateMessage('🚫 Campaign update cancelled per your decision.');
+      }
+    }
 
     // Build system prompt with campaign context
     let systemPrompt = `You are an AI marketing campaign assistant, operating in a comprehensive marketing platform.
@@ -169,14 +281,16 @@ Current media: ${campaignContext.media ? `${campaignContext.media.type} at ${cam
   - "Change it to..."  
   - "Make the caption say..."
   - "Rewrite this as..."
-- After using the tool, confirm the update was successful
+- After explaining your proposed changes, IMMEDIATELY call the updateCampaign tool without asking the user for additional confirmation
+- Do NOT ask \"Should I update?\" or any similar confirmation question—the approval UI will handle the user's decision
+- When the tool call is finished, acknowledge that you've submitted the update for their approval or confirm success if already approved
 - Always refer to this specific campaign when providing feedback or suggestions`;
     }
 
     // Define tool for updating campaigns
     const updateCampaignTool = {
       updateCampaign: {
-        description: 'Update the current campaign with a new caption or media. Use this when the user explicitly asks you to update, change, or modify the campaign content.',
+        description: 'Update the current campaign with a new caption or media. Use this when the user explicitly asks you to update, change, or modify the campaign content. IMPORTANT: Always explain what changes you are proposing before calling this tool.',
         inputSchema: z.object({
           caption: z.string().optional().describe('The updated campaign caption or messaging. Only include if the user wants to change the caption.'),
           mediaType: z.enum(['image', 'video']).optional().describe('The type of media to add to the campaign. Required if adding/updating media.'),
@@ -192,41 +306,61 @@ Current media: ${campaignContext.media ? `${campaignContext.media.type} at ${cam
             return { error: 'No campaign is currently being edited. Cannot update campaign.' };
           }
 
-          try {
-            console.log('🔧 [TOOL] Updating campaign:', campaignContext.id);
+          // Check if this is an approved execution
+          if (toolApproval?.approved && toolApproval.toolName === 'updateCampaign') {
+            console.log('✅ [TOOL] Executing approved tool call');
+            try {
+              console.log('🔧 [TOOL] Updating campaign:', campaignContext.id);
 
-            const updateData: { caption: string; media: { type: "image" | "video"; url: string; name?: string } | null } = {
-              caption: campaignContext.caption,
-              media: campaignContext.media,
-            };
-
-            // Only update fields that are provided
-            if (caption !== undefined && caption !== campaignContext.caption) {
-              console.log('🔧 [TOOL] Updating caption to:', caption);
-              updateData.caption = caption;
-            }
-
-            if (mediaUrl && mediaType) {
-              console.log('🔧 [TOOL] Updating media to:', mediaType, mediaUrl);
-              updateData.media = {
-                type: mediaType as "image" | "video",
-                url: mediaUrl,
-                name: mediaName,
+              const updateData: { caption: string; media: { type: "image" | "video"; url: string; name?: string } | null } = {
+                caption: campaignContext.caption,
+                media: campaignContext.media,
               };
+
+              // Only update fields that are provided
+              if (caption !== undefined && caption !== campaignContext.caption) {
+                console.log('🔧 [TOOL] Updating caption to:', caption);
+                updateData.caption = caption;
+              }
+
+              if (mediaUrl && mediaType) {
+                console.log('🔧 [TOOL] Updating media to:', mediaType, mediaUrl);
+                updateData.media = {
+                  type: mediaType as "image" | "video",
+                  url: mediaUrl,
+                  name: mediaName,
+                };
+              }
+
+              await updateCampaign(campaignContext.id, updateData);
+              console.log('✅ [TOOL] Campaign updated successfully');
+
+              return {
+                success: true,
+                message: 'Campaign updated successfully',
+                updatedCaption: updateData.caption !== campaignContext.caption,
+                updatedMedia: Boolean(mediaUrl && mediaType)
+              };
+            } catch (error) {
+              console.error('❌ [TOOL] Error updating campaign:', error);
+              return { error: 'Failed to update campaign. Please try again.' };
             }
-
-            await updateCampaign(campaignContext.id, updateData);
-            console.log('✅ [TOOL] Campaign updated successfully');
-
+          } else if (toolApproval?.approved === false && toolApproval.toolName === 'updateCampaign') {
+            console.log('❌ [TOOL] Tool call rejected by user');
             return {
-              success: true,
-              message: 'Campaign updated successfully',
-              updatedCaption: updateData.caption !== campaignContext.caption,
-              updatedMedia: Boolean(mediaUrl && mediaType)
+              success: false,
+              message: 'Update cancelled by user',
+              rejected: true
             };
-          } catch (error) {
-            console.error('❌ [TOOL] Error updating campaign:', error);
-            return { error: 'Failed to update campaign. Please try again.' };
+          } else {
+            // First time tool is called - return pending approval
+            console.log('⏸️ [TOOL] Waiting for user approval');
+            return {
+              requiresApproval: true,
+              toolName: 'updateCampaign',
+              parameters: { caption, mediaType, mediaUrl, mediaName },
+              message: 'Waiting for user approval to update campaign',
+            };
           }
         },
       },
@@ -412,4 +546,3 @@ function getMessageText(message: UIMessage) {
     .map((part) => part.text)
     .join('\n');
 }
-

@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { Send, FileText, Lightbulb, FolderOpen, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -68,33 +69,78 @@ interface ChatbotPanelProps {
   } | null;
 }
 
-interface TextPart {
-  type: "text";
-  text: string;
-}
-interface CompetitorPart {
-  type: "data-competitor-analysis";
-  data: CompetitorAnalysisDataPart;
-}
-
 type ChatMessage = UIMessage<
   CompetitorAnalysisMetadata,
   { "competitor-analysis": CompetitorAnalysisDataPart }
 > & {
-  parts: Array<TextPart | CompetitorPart>;
+  toolInvocations?: Array<{
+    state: "call" | "result" | "partial-call";
+    toolCallId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+    result?: unknown;
+  }>;
 };
 
+type ChatMessagePart = ChatMessage["parts"][number];
+
+type CompetitorPart = Extract<
+  ChatMessagePart,
+  { type: "data-competitor-analysis" }
+>;
+
+type ToolCallPart = Extract<ChatMessagePart, { type: `tool-${string}` }>;
+
 const isCompetitorAnalysisPart = (
-  part: ChatMessage["parts"][number]
+  part: ChatMessagePart
 ): part is CompetitorPart => part.type === "data-competitor-analysis";
+
+const isToolCallPart = (part: ChatMessagePart): part is ToolCallPart =>
+  typeof part.type === "string" && part.type.startsWith("tool-");
+
+const getToolNameFromPart = (toolCall: ToolCallPart) => {
+  if (
+    typeof toolCall.output === "object" &&
+    toolCall.output !== null &&
+    "toolName" in toolCall.output
+  ) {
+    const name = (toolCall.output as { toolName?: unknown }).toolName;
+    if (typeof name === "string" && name.length > 0) {
+      return name;
+    }
+  }
+
+  return toolCall.type.startsWith("tool-")
+    ? toolCall.type.slice("tool-".length)
+    : toolCall.type;
+};
 
 /*****************
  * Helpers
  *****************/
 const ANALYSIS_TRIGGER = "!analysis";
 
-const stripMetadata = (text: string) =>
-  text.replace(/\n\n<!--METADATA:[\s\S]+?-->/, "");
+const stripHiddenDirectives = (text: string) =>
+  text
+    .replace(/\n\n<!--METADATA:[\s\S]+?-->/, "")
+    .replace(/\n\n<!--TOOL_APPROVAL:[\s\S]+?-->/, "")
+    .trim();
+
+const shouldHideUserMessageText = (text: string, raw?: string) => {
+  if (!text) return true;
+
+  const normalized = text.trim();
+  if (!normalized) return true;
+
+  const isAutoApprovalText =
+    normalized === "Execute approved action" || normalized === "Cancel action";
+
+  if (isAutoApprovalText) {
+    return raw?.includes("<!--TOOL_APPROVAL:") ?? false;
+  }
+
+  return false;
+};
 
 function formatReferenceContext(references: ReferenceItem[]) {
   if (references.length === 0) return "";
@@ -139,6 +185,96 @@ function formatGeneratedLabel(timestamp: string) {
 /*****************
  * Components
  *****************/
+function ToolCallApproval({
+  toolCall,
+  onApprove,
+  onReject,
+}: {
+  toolCall: ToolCallPart;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  console.log("🎨 [ToolCallApproval] Rendering with toolCall:", toolCall);
+  console.log(
+    "🎨 [ToolCallApproval] requiresApproval:",
+    toolCall.output && typeof toolCall.output === "object"
+      ? (toolCall.output as Record<string, unknown>)?.requiresApproval
+      : undefined
+  );
+
+  if (
+    toolCall.state !== "output-available" ||
+    !toolCall.output ||
+    typeof toolCall.output !== "object" ||
+    !(toolCall.output as { requiresApproval?: boolean }).requiresApproval
+  ) {
+    console.log("⚠️ [ToolCallApproval] Not rendering - no approval required");
+    return null;
+  }
+
+  const output = toolCall.output as {
+    requiresApproval?: boolean;
+    parameters?: Record<string, unknown>;
+    message?: string;
+  };
+  const inputParams =
+    toolCall.input && typeof toolCall.input === "object"
+      ? (toolCall.input as Record<string, unknown>)
+      : undefined;
+  const params = output.parameters || inputParams || {};
+  const caption = params.caption as string | undefined;
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-amber-600 font-semibold">
+            Campaign Update Request
+          </p>
+          <h4 className="mt-1 text-sm font-semibold text-gray-900">
+            Approve this change?
+          </h4>
+        </div>
+        <Badge
+          variant="outline"
+          className="border-amber-200 bg-amber-100 text-amber-700"
+        >
+          Pending
+        </Badge>
+      </div>
+
+      {caption && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-white/60 p-3">
+          <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">
+            New Caption
+          </p>
+          <div className="text-sm text-gray-900 whitespace-pre-wrap max-h-32 overflow-y-auto pr-1">
+            {caption}
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Button
+          onClick={onApprove}
+          size="sm"
+          className="bg-green-600 hover:bg-green-700 text-white"
+        >
+          Accept
+        </Button>
+        <Button
+          onClick={onReject}
+          size="sm"
+          variant="outline"
+          className="border-red-200 text-red-700 hover:bg-red-50"
+        >
+          Reject
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function CompetitorAnalysisPreview({
   data,
   onOpen,
@@ -241,6 +377,9 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
     messageId: string;
     data: CompetitorAnalysisDataPart;
   } | null>(null);
+  const [dismissedToolCallIds, setDismissedToolCallIds] = useState<string[]>(
+    []
+  );
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -250,8 +389,12 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
 
   const { messages, sendMessage, status } = useChat({
     id: chatId,
+    api: "/api/chat",
     onError: (error) => {
       console.error("Chat error:", error);
+    },
+    onFinish: (message) => {
+      console.log("🎉 [useChat] Message finished:", message);
     },
   });
 
@@ -261,6 +404,10 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    setDismissedToolCallIds([]);
+  }, [chatId]);
 
   // Set portal target once DOM is available
   useEffect(() => {
@@ -367,9 +514,14 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
     setSelectedReferences((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = async (toolApproval?: {
+    approved: boolean;
+    toolName: string;
+    parameters: Record<string, unknown>;
+  }) => {
     const trimmedInput = inputValue.trim();
-    if (!trimmedInput && selectedReferences.length === 0) return;
+    if (!trimmedInput && selectedReferences.length === 0 && !toolApproval)
+      return;
 
     // Build reference context
     const referenceContext = formatReferenceContext(selectedReferences);
@@ -381,7 +533,19 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
     };
     const metadataString = `\n\n<!--METADATA:${JSON.stringify(metadata)}-->`;
 
-    const fullMessage = inputValue + referenceContext + metadataString;
+    // Append tool approval if present
+    const toolApprovalString = toolApproval
+      ? `\n\n<!--TOOL_APPROVAL:${JSON.stringify(toolApproval)}-->`
+      : "";
+
+    const fullMessage =
+      (inputValue ||
+        (toolApproval?.approved
+          ? "Execute approved action"
+          : "Cancel action")) +
+      referenceContext +
+      metadataString +
+      toolApprovalString;
     const isAnalysisCommand = trimmedInput
       .toLowerCase()
       .startsWith(ANALYSIS_TRIGGER);
@@ -394,6 +558,52 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
       setInputValue("");
       setSelectedReferences([]);
     }
+  };
+
+  const handleToolApprove = (toolCall: ToolCallPart) => {
+    const toolName = getToolNameFromPart(toolCall);
+    const outputParams =
+      toolCall.output && typeof toolCall.output === "object"
+        ? (toolCall.output as { parameters?: Record<string, unknown> })
+            .parameters
+        : undefined;
+    const inputParams =
+      toolCall.input && typeof toolCall.input === "object"
+        ? (toolCall.input as Record<string, unknown>)
+        : undefined;
+    const parameters = outputParams || inputParams || {};
+    const approval = {
+      approved: true,
+      toolName,
+      parameters,
+    };
+    void handleSendMessage(approval);
+    setDismissedToolCallIds((prev) =>
+      prev.includes(toolCall.toolCallId) ? prev : [...prev, toolCall.toolCallId]
+    );
+  };
+
+  const handleToolReject = (toolCall: ToolCallPart) => {
+    const toolName = getToolNameFromPart(toolCall);
+    const outputParams =
+      toolCall.output && typeof toolCall.output === "object"
+        ? (toolCall.output as { parameters?: Record<string, unknown> })
+            .parameters
+        : undefined;
+    const inputParams =
+      toolCall.input && typeof toolCall.input === "object"
+        ? (toolCall.input as Record<string, unknown>)
+        : undefined;
+    const parameters = outputParams || inputParams || {};
+    const approval = {
+      approved: false,
+      toolName,
+      parameters,
+    };
+    void handleSendMessage(approval);
+    setDismissedToolCallIds((prev) =>
+      prev.includes(toolCall.toolCallId) ? prev : [...prev, toolCall.toolCallId]
+    );
   };
 
   /***************
@@ -427,132 +637,301 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
             </div>
           ) : (
             <div className="space-y-6">
-              {messages.map((message) => (
-                <div key={message.id} className="space-y-2">
-                  {message.role === "user" ? (
-                    <div className="flex justify-end">
-                      <div className="max-w-[85%] px-4 py-2 rounded-2xl text-sm bg-gray-900 text-white shadow-lg">
-                        <div className="whitespace-pre-wrap wrap-break-word overflow-wrap-break-word">
-                          {(message as ChatMessage).parts.map(
-                            (part, index: number) =>
-                              part.type === "text" ? (
-                                <span key={index}>
-                                  {stripMetadata(part.text)}
-                                </span>
-                              ) : null
-                          )}
+              {messages.map((message) => {
+                // Debug: log message structure
+                const chatMsg = message as ChatMessage;
+                if (message.role === "assistant") {
+                  console.log("🔍 [ChatbotPanel] Assistant message:", message);
+                  console.log("🔍 [ChatbotPanel] Parts:", chatMsg.parts);
+                  console.log(
+                    "🔍 [ChatbotPanel] ToolInvocations:",
+                    chatMsg.toolInvocations
+                  );
+                }
+
+                return (
+                  <div key={message.id} className="space-y-2">
+                    {message.role === "user" ? (
+                      (() => {
+                        const visibleTexts = (message as ChatMessage).parts
+                          .filter(
+                            (
+                              part
+                            ): part is Extract<
+                              ChatMessagePart,
+                              { type: "text" }
+                            > => part.type === "text"
+                          )
+                          .map((part) => ({
+                            raw: part.text,
+                            cleaned: stripHiddenDirectives(part.text),
+                          }))
+                          .filter(
+                            ({ cleaned, raw }) =>
+                              !shouldHideUserMessageText(cleaned, raw)
+                          )
+                          .map(({ cleaned }) => cleaned);
+
+                        if (visibleTexts.length === 0) {
+                          return null;
+                        }
+
+                        return (
+                          <div className="flex justify-end">
+                            <div className="max-w-[80%] px-4 py-2 rounded-2xl text-sm bg-gray-900 text-white shadow-lg">
+                              <div className="whitespace-pre-wrap wrap-break-word">
+                                {visibleTexts.map((text, index) => (
+                                  <span key={index}>{text}</span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <div className="text-gray-900">
+                        <div className="text-xs font-semibold text-gray-600 mb-2">
+                          Assistant
+                        </div>
+                        <div className="space-y-3">
+                          {(message as ChatMessage).parts.map((part, index) => {
+                            if (part.type === "text") {
+                              return (
+                                <div
+                                  key={`text-${message.id}-${index}`}
+                                  className="prose prose-sm max-w-none wrap-break-word"
+                                >
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    components={{
+                                      a: (props) => (
+                                        <a
+                                          {...props}
+                                          className="text-blue-600! hover:text-blue-800! underline"
+                                        />
+                                      ),
+                                      p: (props) => (
+                                        <p
+                                          {...props}
+                                          className="wrap-break-word text-gray-900!"
+                                        />
+                                      ),
+                                      code: (props) => (
+                                        <code
+                                          {...props}
+                                          className="text-gray-900! bg-gray-100! px-1 py-0.5 rounded"
+                                        />
+                                      ),
+                                      blockquote: (props) => (
+                                        <blockquote
+                                          {...props}
+                                          className="wrap-break-word text-gray-900! border-l-2 border-amber-200 bg-amber-50/60 px-3 py-2 rounded max-h-32 overflow-y-auto"
+                                        />
+                                      ),
+                                      strong: (props) => (
+                                        <strong
+                                          {...props}
+                                          className="text-gray-900! font-semibold"
+                                        />
+                                      ),
+                                      em: (props) => (
+                                        <em
+                                          {...props}
+                                          className="text-gray-900!"
+                                        />
+                                      ),
+                                      li: (props) => (
+                                        <li
+                                          {...props}
+                                          className="text-gray-900!"
+                                        />
+                                      ),
+                                      h1: (props) => (
+                                        <h1
+                                          {...props}
+                                          className="text-gray-900!"
+                                        />
+                                      ),
+                                      h2: (props) => (
+                                        <h2
+                                          {...props}
+                                          className="text-gray-900!"
+                                        />
+                                      ),
+                                      h3: (props) => (
+                                        <h3
+                                          {...props}
+                                          className="text-gray-900!"
+                                        />
+                                      ),
+                                      h4: (props) => (
+                                        <h4
+                                          {...props}
+                                          className="text-gray-900!"
+                                        />
+                                      ),
+                                    }}
+                                  >
+                                    {part.text}
+                                  </ReactMarkdown>
+                                </div>
+                              );
+                            }
+
+                            if (isCompetitorAnalysisPart(part)) {
+                              const competitorPart = part;
+                              return (
+                                <CompetitorAnalysisPreview
+                                  key={`analysis-${message.id}-${index}`}
+                                  data={competitorPart.data}
+                                  onOpen={() =>
+                                    setActiveMindmap({
+                                      messageId: message.id,
+                                      data: competitorPart.data,
+                                    })
+                                  }
+                                />
+                              );
+                            }
+
+                            if (
+                              isToolCallPart(part) &&
+                              !dismissedToolCallIds.includes(part.toolCallId)
+                            ) {
+                              const toolCallPart = part;
+                              return (
+                                <ToolCallApproval
+                                  key={`tool-${message.id}-${index}`}
+                                  toolCall={toolCallPart}
+                                  onApprove={() =>
+                                    handleToolApprove(toolCallPart)
+                                  }
+                                  onReject={() =>
+                                    handleToolReject(toolCallPart)
+                                  }
+                                />
+                              );
+                            }
+
+                            return null;
+                          })}
+
+                          {/* Render tool invocations */}
+                          {chatMsg.toolInvocations?.map((invocation, idx) => {
+                            console.log(
+                              "🔍 [ChatbotPanel] Tool invocation:",
+                              invocation
+                            );
+                            console.log(
+                              "🔍 [ChatbotPanel] Invocation state:",
+                              invocation.state
+                            );
+                            console.log(
+                              "🔍 [ChatbotPanel] Invocation toolName:",
+                              invocation.toolName
+                            );
+                            console.log(
+                              "🔍 [ChatbotPanel] Invocation result:",
+                              invocation.result
+                            );
+
+                            if (invocation.toolName === "updateCampaign") {
+                              if (
+                                dismissedToolCallIds.includes(
+                                  invocation.toolCallId
+                                )
+                              ) {
+                                return null;
+                              }
+
+                              const args =
+                                (invocation.args as Record<string, unknown>) ||
+                                {};
+
+                              if (
+                                invocation.state === "call" ||
+                                invocation.state === "partial-call"
+                              ) {
+                                const toolCallPart = {
+                                  type: `tool-${invocation.toolName}`,
+                                  toolCallId: invocation.toolCallId,
+                                  state: "output-available",
+                                  input: args,
+                                  output: {
+                                    requiresApproval: true,
+                                    toolName: invocation.toolName,
+                                    parameters: args,
+                                  },
+                                } as ToolCallPart;
+
+                                console.log(
+                                  "✅ [ChatbotPanel] Rendering ToolCallApproval (call state)"
+                                );
+
+                                return (
+                                  <ToolCallApproval
+                                    key={`tool-inv-${message.id}-${idx}`}
+                                    toolCall={toolCallPart}
+                                    onApprove={() =>
+                                      handleToolApprove(toolCallPart)
+                                    }
+                                    onReject={() =>
+                                      handleToolReject(toolCallPart)
+                                    }
+                                  />
+                                );
+                              }
+
+                              const result = invocation.result as
+                                | {
+                                    requiresApproval?: boolean;
+                                    toolName?: string;
+                                    parameters?: Record<string, unknown>;
+                                    message?: string;
+                                  }
+                                | undefined;
+                              console.log(
+                                "🔍 [ChatbotPanel] Result object:",
+                                result
+                              );
+                              console.log(
+                                "🔍 [ChatbotPanel] requiresApproval?",
+                                result?.requiresApproval
+                              );
+
+                              if (result?.requiresApproval) {
+                                const toolCallPart = {
+                                  type: `tool-${invocation.toolName}`,
+                                  toolCallId: invocation.toolCallId,
+                                  state: "output-available",
+                                  input: args,
+                                  output: result,
+                                } as ToolCallPart;
+                                console.log(
+                                  "✅ [ChatbotPanel] Rendering ToolCallApproval (result state)"
+                                );
+                                return (
+                                  <ToolCallApproval
+                                    key={`tool-inv-${message.id}-${idx}`}
+                                    toolCall={toolCallPart}
+                                    onApprove={() =>
+                                      handleToolApprove(toolCallPart)
+                                    }
+                                    onReject={() =>
+                                      handleToolReject(toolCallPart)
+                                    }
+                                  />
+                                );
+                              }
+                            }
+                            return null;
+                          })}
                         </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="text-gray-900">
-                      <div className="text-xs font-semibold text-gray-600 mb-2">
-                        Assistant
-                      </div>
-                      <div className="space-y-3">
-                        {(message as ChatMessage).parts.map((part, index) => {
-                          if (part.type === "text") {
-                            return (
-                              <div
-                                key={`text-${message.id}-${index}`}
-                                className="prose prose-sm max-w-none"
-                              >
-                                <ReactMarkdown
-                                  remarkPlugins={[remarkGfm]}
-                                  components={{
-                                    a: (props) => (
-                                      <a
-                                        {...props}
-                                        className="text-blue-600! hover:text-blue-800! underline"
-                                      />
-                                    ),
-                                    p: (props) => (
-                                      <p
-                                        {...props}
-                                        className="wrap-break-word text-gray-900!"
-                                      />
-                                    ),
-                                    code: (props) => (
-                                      <code
-                                        {...props}
-                                        className="text-gray-900! bg-gray-100! px-1 py-0.5 rounded"
-                                      />
-                                    ),
-                                    strong: (props) => (
-                                      <strong
-                                        {...props}
-                                        className="text-gray-900! font-semibold"
-                                      />
-                                    ),
-                                    em: (props) => (
-                                      <em
-                                        {...props}
-                                        className="text-gray-900!"
-                                      />
-                                    ),
-                                    li: (props) => (
-                                      <li
-                                        {...props}
-                                        className="text-gray-900!"
-                                      />
-                                    ),
-                                    h1: (props) => (
-                                      <h1
-                                        {...props}
-                                        className="text-gray-900!"
-                                      />
-                                    ),
-                                    h2: (props) => (
-                                      <h2
-                                        {...props}
-                                        className="text-gray-900!"
-                                      />
-                                    ),
-                                    h3: (props) => (
-                                      <h3
-                                        {...props}
-                                        className="text-gray-900!"
-                                      />
-                                    ),
-                                    h4: (props) => (
-                                      <h4
-                                        {...props}
-                                        className="text-gray-900!"
-                                      />
-                                    ),
-                                  }}
-                                >
-                                  {part.text}
-                                </ReactMarkdown>
-                              </div>
-                            );
-                          }
-
-                          if (
-                            isCompetitorAnalysisPart(part as CompetitorPart)
-                          ) {
-                            const competitorPart = part as CompetitorPart;
-                            return (
-                              <CompetitorAnalysisPreview
-                                key={`analysis-${message.id}-${index}`}
-                                data={competitorPart.data}
-                                onOpen={() =>
-                                  setActiveMindmap({
-                                    messageId: message.id,
-                                    data: competitorPart.data,
-                                  })
-                                }
-                              />
-                            );
-                          }
-
-                          return null;
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                    )}
+                  </div>
+                );
+              })}
 
               {analysisPending && (
                 <div className="space-y-2">
@@ -718,7 +1097,9 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
             </Select>
 
             <Button
-              onClick={handleSendMessage}
+              onClick={() => {
+                void handleSendMessage();
+              }}
               size="icon"
               disabled={
                 status !== "ready" ||

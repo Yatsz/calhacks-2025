@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { getCampaignById } from "@/lib/db";
 import { Header } from "@/components/adintelligence/Header";
@@ -26,6 +26,11 @@ const contentTypes = [
   { id: "library", label: "Content Library", color: "#3FB855" },
 ];
 
+const CHAT_WIDTH_STORAGE_KEY = "adintelligence-chat-width";
+const DEFAULT_CHAT_WIDTH = 320;
+const MIN_CHAT_WIDTH = 260;
+const MAX_CHAT_WIDTH = 640;
+
 export default function AdIntelligencePage() {
   const searchParams = useSearchParams();
   const [selectedContent, setSelectedContent] = useState<ContentItem | null>(
@@ -38,6 +43,33 @@ export default function AdIntelligencePage() {
     media: { type: "image" | "video"; url: string; name?: string } | null;
   } | null>(null);
   const editingCampaignId = searchParams.get("edit");
+
+  const computeMaxChatWidth = () => {
+    if (typeof window === "undefined") {
+      return MAX_CHAT_WIDTH;
+    }
+    const available = window.innerWidth - 420; // account for left panel and padding
+    return Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, available));
+  };
+
+  const [chatPanelWidth, setChatPanelWidth] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem(CHAT_WIDTH_STORAGE_KEY);
+      const parsed = stored ? parseInt(stored, 10) : NaN;
+      if (!Number.isNaN(parsed)) {
+        const maxWidth = Math.max(
+          MIN_CHAT_WIDTH,
+          Math.min(MAX_CHAT_WIDTH, parsed)
+        );
+        return maxWidth;
+      }
+    }
+    return DEFAULT_CHAT_WIDTH;
+  });
+  const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(
+    null
+  );
+  const [isResizing, setIsResizing] = useState(false);
 
   // Load campaign context when editing a campaign
   useEffect(() => {
@@ -60,6 +92,80 @@ export default function AdIntelligencePage() {
       }
     })();
   }, [editingCampaignId]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        CHAT_WIDTH_STORAGE_KEY,
+        String(Math.round(chatPanelWidth))
+      );
+    }
+  }, [chatPanelWidth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => {
+      const maxWidth = computeMaxChatWidth();
+      setChatPanelWidth((prev) =>
+        Math.min(Math.max(prev, MIN_CHAT_WIDTH), maxWidth)
+      );
+    };
+    window.addEventListener("resize", handleResize);
+    handleResize();
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!resizeStateRef.current) return;
+      const { startX, startWidth } = resizeStateRef.current;
+      const delta = event.clientX - startX;
+      const maxWidth = computeMaxChatWidth();
+      const nextWidth = Math.min(
+        Math.max(startWidth - delta, MIN_CHAT_WIDTH),
+        maxWidth
+      );
+      setChatPanelWidth(nextWidth);
+    };
+
+    const handlePointerUp = () => {
+      setIsResizing(false);
+      resizeStateRef.current = null;
+      document.body.classList.remove("select-none", "cursor-col-resize");
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [isResizing]);
+
+  useEffect(() => {
+    return () => {
+      document.body.classList.remove("select-none", "cursor-col-resize");
+    };
+  }, []);
+
+  const handleResizeStart = (
+    event: React.PointerEvent<HTMLDivElement>
+  ): void => {
+    event.preventDefault();
+    resizeStateRef.current = {
+      startX: event.clientX,
+      startWidth: chatPanelWidth,
+    };
+    setIsResizing(true);
+    document.body.classList.add("select-none", "cursor-col-resize");
+  };
 
   const activeColor =
     contentTypes.find((t) => t.id === activeTab)?.color || "#669CE4";
@@ -172,14 +278,34 @@ export default function AdIntelligencePage() {
             </ScrollArea>
           </div>
 
-          {/* Center - Campaign Editor */}
-          <div className="flex-1 overflow-auto">
-            <CampaignEditor editingCampaignId={editingCampaignId} />
-          </div>
-
-          {/* Right Panel - AI Assistant */}
-          <div className="w-80 backdrop-blur-2xl bg-white/30 border border-white/40 rounded-3xl shadow-xl overflow-hidden">
-            <ChatbotPanel campaignContext={campaignContext} />
+          {/* Center & Right Panels */}
+          <div className="flex flex-1 gap-3 items-stretch">
+            <div className="flex-1 overflow-auto">
+              <CampaignEditor editingCampaignId={editingCampaignId} />
+            </div>
+            <div
+              className={`relative w-2 flex-shrink-0 cursor-col-resize rounded-full bg-white/40 transition-colors ${
+                isResizing ? "bg-white/70" : "hover:bg-white/60"
+              }`}
+              onPointerDown={handleResizeStart}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize assistant panel"
+            >
+              <span className="sr-only">Resize assistant panel</span>
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <span className="h-10 w-[2px] rounded-full bg-white/80" />
+              </div>
+            </div>
+            <div
+              className="backdrop-blur-2xl bg-white/30 border border-white/40 rounded-3xl shadow-xl overflow-hidden flex-shrink-0"
+              style={{
+                width: chatPanelWidth,
+                flexBasis: chatPanelWidth,
+              }}
+            >
+              <ChatbotPanel campaignContext={campaignContext} />
+            </div>
           </div>
         </div>
       </div>
