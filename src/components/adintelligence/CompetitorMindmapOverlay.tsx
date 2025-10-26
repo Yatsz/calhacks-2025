@@ -1,13 +1,7 @@
 "use client";
 
 import { useEffect, useId, type ReactNode } from "react";
-import {
-  Activity,
-  ExternalLink,
-  MapPin,
-  Timer,
-  X,
-} from "lucide-react";
+import { Activity, ExternalLink, MapPin, Timer, X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import type {
@@ -22,7 +16,10 @@ interface CompetitorMindmapOverlayProps {
   onClose: () => void;
 }
 
-export function CompetitorMindmapOverlay({ analysis, onClose }: CompetitorMindmapOverlayProps) {
+export function CompetitorMindmapOverlay({
+  analysis,
+  onClose,
+}: CompetitorMindmapOverlayProps) {
   const { payload, generatedAt, durationMs, error } = analysis;
 
   useEffect(() => {
@@ -38,16 +35,26 @@ export function CompetitorMindmapOverlay({ analysis, onClose }: CompetitorMindma
 
   const generatedLabel = formatExactTimestamp(generatedAt);
   const durationLabel =
-    typeof durationMs === "number" ? `${Math.max(0.1, durationMs / 1000).toFixed(1)}s` : "n/a";
+    typeof durationMs === "number"
+      ? `${Math.max(0.1, durationMs / 1000).toFixed(1)}s`
+      : "n/a";
 
   if (!payload) {
     return (
-      <OverlayShell onClose={onClose} generatedLabel={generatedLabel} durationLabel={durationLabel} query={analysis.query}>
+      <OverlayShell
+        onClose={onClose}
+        generatedLabel={generatedLabel}
+        durationLabel={durationLabel}
+        query={analysis.query}
+      >
         <div className="px-8 py-12 text-center text-sm text-red-600">
-          <p className="font-semibold">BrightData competitor intelligence is unavailable.</p>
+          <p className="font-semibold">
+            BrightData competitor intelligence is unavailable.
+          </p>
           {error && <p className="mt-3 text-red-500">{error}</p>}
           <p className="mt-6 text-xs text-gray-500">
-            Try again in a few moments or adjust your query to broaden the results.
+            Try again in a few moments or adjust your query to broaden the
+            results.
           </p>
         </div>
       </OverlayShell>
@@ -60,7 +67,12 @@ export function CompetitorMindmapOverlay({ analysis, onClose }: CompetitorMindma
   const topRegions = trends.topRegions;
   const rawDataUrl = createDataUrl(analysis);
 
-  const keySignals = buildKeySignals(insights, interestPoints, topRegions, trends.success);
+  const keySignals = buildKeySignals(
+    insights,
+    interestPoints,
+    topRegions,
+    trends.success
+  );
 
   return (
     <OverlayShell
@@ -69,7 +81,11 @@ export function CompetitorMindmapOverlay({ analysis, onClose }: CompetitorMindma
       durationLabel={durationLabel}
       query={payload.query}
       insightsCount={insights.length}
-      trendSummary={trends.success ? `${interestPoints.length} datapoints` : "Trends unavailable"}
+      trendSummary={
+        trends.success
+          ? `${interestPoints.length} datapoints`
+          : "Trends unavailable"
+      }
       showErrorBanner={Boolean(error)}
       errorMessage={error}
     >
@@ -93,7 +109,10 @@ export function CompetitorMindmapOverlay({ analysis, onClose }: CompetitorMindma
                 />
               ))
             ) : (
-              <EmptyState direction="left" message="No competitive signals returned for this query." />
+              <EmptyState
+                direction="left"
+                message="No competitive signals returned for this query."
+              />
             )}
           </div>
 
@@ -111,20 +130,25 @@ export function CompetitorMindmapOverlay({ analysis, onClose }: CompetitorMindma
           <div className="space-y-4">
             <SectionTitle label="Trend Hotspots" align="left" />
             {trends.success ? (
-              topRegions.slice(0, 4).map((region, index) => (
-                <MindmapNode
-                  key={`${region.region}-${index}`}
-                  direction="right"
-                  badge={index === 0 ? "Peak region" : `Region #${index + 1}`}
-                  title={region.region}
-                  description={`Interest score ${region.value}`}
-                  icon={<MapPin className="h-3 w-3" />}
-                />
-              ))
+              topRegions
+                .slice(0, 4)
+                .map((region, index) => (
+                  <MindmapNode
+                    key={`${region.region}-${index}`}
+                    direction="right"
+                    badge={index === 0 ? "Peak region" : `Region #${index + 1}`}
+                    title={region.region}
+                    description={`Interest score ${region.value}`}
+                    icon={<MapPin className="h-3 w-3" />}
+                  />
+                ))
             ) : (
               <EmptyState
                 direction="right"
-                message={trends.error ?? "Google Trends data unavailable for this query."}
+                message={
+                  trends.error ??
+                  "Google Trends data unavailable for this query."
+                }
               />
             )}
             {rawDataUrl && (
@@ -134,7 +158,10 @@ export function CompetitorMindmapOverlay({ analysis, onClose }: CompetitorMindma
                 title="Download JSON excerpt"
                 description="Capture the BrightData payload for deeper offline analysis."
                 href={rawDataUrl}
-                downloadName={`${payload.query.replace(/\s+/g, '-')}-brightdata.json`}
+                downloadName={`${payload.query.replace(
+                  /\s+/g,
+                  "-"
+                )}-brightdata.json`}
               />
             )}
           </div>
@@ -180,7 +207,7 @@ function OverlayShell({
         }
       }}
     >
-      <div className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-3xl border border-sky-100 bg-gradient-to-br from-white via-sky-50 to-white shadow-2xl">
+      <div className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-3xl border border-sky-100 bg-linear-to-br from-white via-sky-50 to-white shadow-2xl">
         <button
           type="button"
           onClick={onClose}
@@ -193,21 +220,28 @@ function OverlayShell({
         <div className="flex flex-wrap items-start justify-between gap-6 border-b border-white/70 bg-white/60 px-8 py-6 pr-16">
           <div>
             <div className="flex items-center gap-3">
-              <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
+              <Badge
+                variant="outline"
+                className="border-sky-200 bg-sky-50 text-sky-700"
+              >
                 BrightData
               </Badge>
               <span className="text-xs uppercase tracking-[0.20em] text-sky-500">
                 Competitor Intelligence Graph
               </span>
             </div>
-            <h2 className="mt-3 text-2xl font-semibold text-slate-900">{query}</h2>
+            <h2 className="mt-3 text-2xl font-semibold text-slate-900">
+              {query}
+            </h2>
             <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
               <span>Generated {generatedLabel}</span>
               <span>
                 <Timer className="mr-1 inline h-3 w-3" />
                 {durationLabel}
               </span>
-              {typeof insightsCount === "number" && <span>{insightsCount} web signals</span>}
+              {typeof insightsCount === "number" && (
+                <span>{insightsCount} web signals</span>
+              )}
               {trendSummary && <span>{trendSummary}</span>}
             </div>
           </div>
@@ -266,7 +300,9 @@ function MindmapNode({
         aria-hidden
       />
       <span
-        className={`pointer-events-none absolute top-1/2 h-3 w-3 rounded-full border-2 border-white ${dotPosition} ${direction === "left" ? "bg-sky-400" : "bg-emerald-400"}`}
+        className={`pointer-events-none absolute top-1/2 h-3 w-3 rounded-full border-2 border-white ${dotPosition} ${
+          direction === "left" ? "bg-sky-400" : "bg-emerald-400"
+        }`}
         aria-hidden
       />
       <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-sky-600">
@@ -290,8 +326,14 @@ function MindmapNode({
           {title}
         </span>
       )}
-      {meta && <span className="text-[10px] uppercase tracking-wide text-slate-400">{meta}</span>}
-      {description && <p className="text-xs text-slate-600 line-clamp-3">{description}</p>}
+      {meta && (
+        <span className="text-[10px] uppercase tracking-wide text-slate-400">
+          {meta}
+        </span>
+      )}
+      {description && (
+        <p className="text-xs text-slate-600 line-clamp-3">{description}</p>
+      )}
     </div>
   );
 }
@@ -303,13 +345,21 @@ interface MindmapHubProps {
   primaryDomain?: string | null;
 }
 
-function MindmapHub({ query, insightsCount, trendAvailable, primaryDomain }: MindmapHubProps) {
+function MindmapHub({
+  query,
+  insightsCount,
+  trendAvailable,
+  primaryDomain,
+}: MindmapHubProps) {
   return (
     <div className="relative flex w-full max-w-sm flex-col items-center gap-3 rounded-full border-2 border-sky-200 bg-white/85 px-8 py-8 text-center shadow-xl">
-      <div className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-500">Focus</div>
+      <div className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-500">
+        Focus
+      </div>
       <h3 className="text-lg font-semibold text-slate-900">{query}</h3>
       <p className="text-xs text-slate-500">
-        {insightsCount} web signals • {trendAvailable ? "Trends active" : "Trends offline"}
+        {insightsCount} web signals •{" "}
+        {trendAvailable ? "Trends active" : "Trends offline"}
       </p>
       {primaryDomain && (
         <span className="rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-[10px] uppercase tracking-wide text-sky-600">
@@ -345,7 +395,10 @@ function TrendsMiniChart({ points, success }: TrendsMiniChartProps) {
   }
 
   const { linePath, areaPath, maxValue, minValue } = buildTrendPaths(points);
-  const peak = points.reduce((prev, current) => (current.value > prev.value ? current : prev), points[0]);
+  const peak = points.reduce(
+    (prev, current) => (current.value > prev.value ? current : prev),
+    points[0]
+  );
 
   return (
     <div className="w-full max-w-sm rounded-2xl border border-sky-100 bg-white/80 px-4 py-4 shadow-sm">
@@ -353,7 +406,11 @@ function TrendsMiniChart({ points, success }: TrendsMiniChartProps) {
         <Activity className="h-4 w-4" />
         Interest timeline
       </div>
-      <svg viewBox="0 0 100 60" preserveAspectRatio="none" className="mt-3 h-28 w-full">
+      <svg
+        viewBox="0 0 100 60"
+        preserveAspectRatio="none"
+        className="mt-3 h-28 w-full"
+      >
         <defs>
           <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.35" />
@@ -361,13 +418,17 @@ function TrendsMiniChart({ points, success }: TrendsMiniChartProps) {
           </linearGradient>
         </defs>
         <path d={areaPath} fill={`url(#${gradientId})`} />
-        <path d={linePath} fill="none" stroke="#0ea5e9" strokeWidth={2.2} strokeLinecap="round" />
+        <path
+          d={linePath}
+          fill="none"
+          stroke="#0ea5e9"
+          strokeWidth={2.2}
+          strokeLinecap="round"
+        />
       </svg>
       <div className="mt-2 flex justify-between text-[10px] uppercase tracking-wide text-slate-400">
         <span>{points[0]?.label}</span>
-        <span>
-          Peak {peak.value}
-        </span>
+        <span>Peak {peak.value}</span>
         <span>{points[points.length - 1]?.label}</span>
       </div>
       <div className="mt-1 text-[10px] text-slate-400">
@@ -380,11 +441,13 @@ function TrendsMiniChart({ points, success }: TrendsMiniChartProps) {
 function SignalCard({ signals }: { signals: string[] }) {
   return (
     <div className="w-full max-w-sm rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-4 text-sm text-amber-900 shadow-inner">
-      <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Key signals</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+        Key signals
+      </p>
       <ul className="mt-2 space-y-2 text-xs leading-relaxed">
         {signals.map((signal, index) => (
           <li key={index} className="flex items-start gap-2">
-            <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-amber-500" />
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
             <span>{signal}</span>
           </li>
         ))}
@@ -393,19 +456,35 @@ function SignalCard({ signals }: { signals: string[] }) {
   );
 }
 
-function SectionTitle({ label, align }: { label: string; align: "left" | "right" }) {
+function SectionTitle({
+  label,
+  align,
+}: {
+  label: string;
+  align: "left" | "right";
+}) {
   const alignment = align === "left" ? "text-left" : "text-right";
   return (
-    <div className={`text-xs font-semibold uppercase tracking-[0.24em] text-slate-400 ${alignment}`}>
+    <div
+      className={`text-xs font-semibold uppercase tracking-[0.24em] text-slate-400 ${alignment}`}
+    >
       {label}
     </div>
   );
 }
 
-function EmptyState({ direction, message }: { direction: "left" | "right"; message: string }) {
+function EmptyState({
+  direction,
+  message,
+}: {
+  direction: "left" | "right";
+  message: string;
+}) {
   const alignment = direction === "left" ? "text-right" : "text-left";
   return (
-    <div className={`rounded-2xl border border-dashed border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-500 ${alignment}`}>
+    <div
+      className={`rounded-2xl border border-dashed border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-500 ${alignment}`}
+    >
       {message}
     </div>
   );
@@ -428,18 +507,30 @@ function buildKeySignals(
   }
 
   if (trendsSuccess && points.length) {
-    const peak = points.reduce((prev, current) => (current.value > prev.value ? current : prev), points[0]);
-    signals.push(`Peak Google interest at "${peak.label}" (score ${peak.value}).`);
+    const peak = points.reduce(
+      (prev, current) => (current.value > prev.value ? current : prev),
+      points[0]
+    );
+    signals.push(
+      `Peak Google interest at "${peak.label}" (score ${peak.value}).`
+    );
 
-    const trough = points.reduce((prev, current) => (current.value < prev.value ? current : prev), points[0]);
+    const trough = points.reduce(
+      (prev, current) => (current.value < prev.value ? current : prev),
+      points[0]
+    );
     if (trough.value !== peak.value) {
-      signals.push(`Lowest interest around "${trough.label}" (${trough.value}).`);
+      signals.push(
+        `Lowest interest around "${trough.label}" (${trough.value}).`
+      );
     }
   }
 
   if (regions.length) {
     const topRegion = regions[0];
-    signals.push(`Strongest demand in ${topRegion.region} (score ${topRegion.value}).`);
+    signals.push(
+      `Strongest demand in ${topRegion.region} (score ${topRegion.value}).`
+    );
   }
 
   return signals.slice(0, 4);

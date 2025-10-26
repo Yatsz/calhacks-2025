@@ -32,13 +32,17 @@ export default function AdIntelligencePage() {
     null
   );
   const [activeTab, setActiveTab] = useState("inspiration");
-  const [campaignContext, setCampaignContext] = useState<{ id: string; caption: string; media: { type: "image" | "video"; url: string; name?: string } | null } | null>(null);
-  const editingCampaignId = searchParams.get('edit');
+  const [campaignContext, setCampaignContext] = useState<{
+    id: string;
+    caption: string;
+    media: { type: "image" | "video"; url: string; name?: string } | null;
+  } | null>(null);
+  const editingCampaignId = searchParams.get("edit");
 
   // Load campaign context when editing a campaign
   useEffect(() => {
     (async () => {
-      if (editingCampaignId && typeof window !== 'undefined') {
+      if (editingCampaignId && typeof window !== "undefined") {
         try {
           const campaign = await getCampaignById(editingCampaignId);
           if (campaign) {
@@ -49,7 +53,7 @@ export default function AdIntelligencePage() {
             });
           }
         } catch (error) {
-          console.error('Error loading campaign context:', error);
+          console.error("Error loading campaign context:", error);
         }
       } else {
         setCampaignContext(null);
@@ -74,7 +78,7 @@ export default function AdIntelligencePage() {
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Animated gradient background */}
-      <div className="fixed inset-0 bg-gradient-to-br from-blue-50 via-purple-50 to-green-50 transition-colors duration-700" />
+      <div className="fixed inset-0 bg-linear-to-br from-blue-50 via-purple-50 to-green-50 transition-colors duration-700" />
 
       {/* Dynamic spotlight that changes with active tab */}
       <div
@@ -113,7 +117,7 @@ export default function AdIntelligencePage() {
                     <TabsTrigger
                       key={type.id}
                       value={type.id}
-                      className="flex-1 !text-gray-900 font-medium py-1.5 px-1.5 text-[10px] rounded-lg transition-all min-h-[44px]"
+                      className="flex-1 text-gray-900! font-medium py-1.5 px-1.5 text-[10px] rounded-lg transition-all min-h-[44px]"
                       style={{
                         backgroundColor:
                           activeTab === type.id
@@ -123,10 +127,10 @@ export default function AdIntelligencePage() {
                     >
                       <span className="flex items-center gap-1 w-full">
                         <div
-                          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          className="w-1.5 h-1.5 rounded-full shrink-0"
                           style={{ backgroundColor: type.color }}
                         />
-                        <span className="text-center leading-[1.1] flex-1 break-words">
+                        <span className="text-center leading-[1.1] flex-1 wrap-break-word">
                           {type.label}
                         </span>
                       </span>

@@ -28,7 +28,7 @@ export default function CampaignsPage() {
       const data = await getAllCampaigns();
       setCampaigns(data);
     } catch (error) {
-      console.error('Failed to load campaigns:', error);
+      console.error("Failed to load campaigns:", error);
     } finally {
       setLoading(false);
     }
@@ -37,27 +37,32 @@ export default function CampaignsPage() {
   const handleDelete = async (id: string) => {
     try {
       await deleteCampaign(id);
-      setCampaigns((prev) => prev.filter(c => c.id !== id));
+      setCampaigns((prev) => prev.filter((c) => c.id !== id));
     } catch (error) {
-      console.error('Failed to delete campaign:', error);
-      alert('Failed to delete campaign. Please try again.');
+      console.error("Failed to delete campaign:", error);
+      alert("Failed to delete campaign. Please try again.");
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+    <div className="min-h-screen bg-linear-to-br from-blue-50 via-purple-50 to-pink-50">
       {/* Header */}
       <header className="backdrop-blur-2xl bg-white/40 border-b border-white/40 shadow-lg">
         <div className="px-8 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <Image 
-              src="/film.svg" 
-              alt="UGCIntel" 
-              width={24} 
+          <Link
+            href="/"
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
+            <Image
+              src="/film.svg"
+              alt="UGCIntel"
+              width={24}
               height={24}
               className="w-6 h-6"
             />
-            <span className="text-xl font-semibold text-gray-900 tracking-tight">UGCIntel</span>
+            <span className="text-xl font-semibold text-gray-900 tracking-tight">
+              UGCIntel
+            </span>
           </Link>
         </div>
       </header>
@@ -96,7 +101,10 @@ export default function CampaignsPage() {
                 key={campaign.id}
                 className="backdrop-blur-xl bg-white/60 rounded-2xl border border-white/60 shadow-xl overflow-hidden hover:shadow-2xl transition-all group relative cursor-pointer"
               >
-                <Link href={`/adintelligence?edit=${campaign.id}`} className="block">
+                <Link
+                  href={`/adintelligence?edit=${campaign.id}`}
+                  className="block"
+                >
                   {/* Media Preview */}
                   <div className="aspect-square bg-gray-100 relative">
                     {campaign.media ? (
@@ -151,4 +159,3 @@ export default function CampaignsPage() {
     </div>
   );
 }
-

@@ -15,8 +15,8 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
-import { getContentItemsByCategory, getAllCampaigns } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
+import { getContentItemsByCategory, getAllCampaigns } from "@/lib/db";
 import type { UIMessage } from "ai";
 import type {
   CompetitorAnalysisDataPart,
@@ -24,6 +24,9 @@ import type {
 } from "@/types/competitor-analysis";
 import { CompetitorMindmapOverlay } from "./CompetitorMindmapOverlay";
 
+/*****************
+ * Types
+ *****************/
 interface ContentItem {
   id: string;
   type: "image" | "video" | "pdf" | "text";
@@ -33,9 +36,15 @@ interface ContentItem {
   text?: string;
 }
 
+interface CampaignMedia {
+  type: "image" | "video";
+  url: string;
+  name?: string;
+}
+
 interface Campaign {
   id: string;
-  media: { type: "image" | "video"; url: string; name?: string } | null;
+  media: CampaignMedia | null;
   caption: string;
   createdAt: string;
 }
@@ -55,37 +64,100 @@ interface ChatbotPanelProps {
   campaignContext?: {
     id: string;
     caption: string;
-    media: { type: "image" | "video"; url: string; name?: string } | null;
+    media: CampaignMedia | null;
   } | null;
 }
 
-interface CompetitorAnalysisPreviewProps {
+interface TextPart {
+  type: "text";
+  text: string;
+}
+interface CompetitorPart {
+  type: "data-competitor-analysis";
   data: CompetitorAnalysisDataPart;
-  onOpen: () => void;
 }
 
+type ChatMessage = UIMessage<
+  CompetitorAnalysisMetadata,
+  { "competitor-analysis": CompetitorAnalysisDataPart }
+> & {
+  parts: Array<TextPart | CompetitorPart>;
+};
+
+const isCompetitorAnalysisPart = (
+  part: ChatMessage["parts"][number]
+): part is CompetitorPart => part.type === "data-competitor-analysis";
+
+/*****************
+ * Helpers
+ *****************/
+const ANALYSIS_TRIGGER = "!analysis";
+
+const stripMetadata = (text: string) =>
+  text.replace(/\n\n<!--METADATA:[\s\S]+?-->/, "");
+
+function formatReferenceContext(references: ReferenceItem[]) {
+  if (references.length === 0) return "";
+
+  let context = "\n\n---REFERENCED CONTENT---\n";
+  references.forEach((ref, index) => {
+    context += `\n[Reference ${index + 1} - ${ref.type}]: ${ref.label}\n`;
+    if ("caption" in ref.data) {
+      const campaign = ref.data as Campaign;
+      if (campaign.caption) context += `Caption: ${campaign.caption}\n`;
+      if (campaign.media)
+        context += `Has media: Yes (${campaign.media.type})\n`;
+    } else {
+      const item = ref.data as ContentItem;
+      if (item.text) context += `Content: ${item.text}\n`;
+      if (item.type) context += `Type: ${item.type}\n`;
+      if (item.url) context += "Has media: Yes\n";
+    }
+  });
+  context += "---END REFERENCED CONTENT---\n\n";
+
+  return context;
+}
+
+function formatGeneratedLabel(timestamp: string) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "just now";
+
+  const now = Date.now();
+  const diffMs = date.getTime() - now;
+  const diffMinutes = Math.round(diffMs / 60000);
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+  if (Math.abs(diffMinutes) < 60) return rtf.format(diffMinutes, "minute");
+
+  const diffHours = Math.round(diffMs / 3600000);
+  if (Math.abs(diffHours) < 24) return rtf.format(diffHours, "hour");
+
+  return date.toLocaleString();
+}
+
+/*****************
+ * Components
+ *****************/
 function CompetitorAnalysisPreview({
   data,
   onOpen,
-}: CompetitorAnalysisPreviewProps) {
+}: {
+  data: CompetitorAnalysisDataPart;
+  onOpen: () => void;
+}) {
   const insightsCount = data.payload?.searchInsights.length ?? 0;
   const trendSummary = data.payload?.googleTrends;
   const trendLabel = trendSummary?.success
-    ? trendSummary.interestOverTime.length +
-      " points • " +
-      trendSummary.topRegions.length +
-      " regions"
+    ? `${trendSummary.interestOverTime.length} points • ${trendSummary.topRegions.length} regions`
     : "Unavailable";
-  const durationMs = data.durationMs;
   const durationLabel =
-    typeof durationMs === "number"
-      ? (durationMs / 1000).toFixed(1) + "s"
+    typeof data.durationMs === "number"
+      ? `${Math.max(0.1, data.durationMs / 1000).toFixed(1)}s`
       : undefined;
 
   const handleOpen = () => {
-    if (!data.error) {
-      onOpen();
-    }
+    if (!data.error) onOpen();
   };
 
   return (
@@ -144,7 +216,7 @@ function CompetitorAnalysisPreview({
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
         <span>
           Generated {formatGeneratedLabel(data.generatedAt)} via BrightData
-          {durationLabel ? " • " + durationLabel : ""}
+          {durationLabel ? ` • ${durationLabel}` : ""}
         </span>
         {!data.error && <span className="text-sky-600">Click to expand</span>}
       </div>
@@ -152,48 +224,7 @@ function CompetitorAnalysisPreview({
   );
 }
 
-function formatGeneratedLabel(timestamp: string) {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) {
-    return "just now";
-  }
-
-  const now = Date.now();
-  const diffMs = date.getTime() - now;
-  const diffMinutes = Math.round(diffMs / 60000);
-
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-
-  if (Math.abs(diffMinutes) < 60) {
-    return rtf.format(diffMinutes, "minute");
-  }
-
-  const diffHours = Math.round(diffMs / 3600000);
-  if (Math.abs(diffHours) < 24) {
-    return rtf.format(diffHours, "hour");
-  }
-
-  return date.toLocaleString();
-}
-
 export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
-  console.log("ChatbotPanel received campaignContext:", campaignContext);
-  const ANALYSIS_TRIGGER = "!analysis";
-
-  type ChatMessage = UIMessage<
-    CompetitorAnalysisMetadata,
-    { "competitor-analysis": CompetitorAnalysisDataPart }
-  >;
-
-  type CompetitorAnalysisPart = Extract<
-    ChatMessage["parts"][number],
-    { type: "data-competitor-analysis" }
-  >;
-
-  const isCompetitorAnalysisPart = (
-    part: ChatMessage["parts"][number]
-  ): part is CompetitorAnalysisPart => part.type === "data-competitor-analysis";
-
   const [inputValue, setInputValue] = useState("");
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashMenuItems, setSlashMenuItems] = useState<ReferenceItem[]>([]);
@@ -214,7 +245,8 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const chatId = campaignContext?.id || "no-campaign" + "-" + selectedModel;
+  // Re-init chat on campaign/model change
+  const chatId = `${campaignContext?.id || "no-campaign"}-${selectedModel}`;
 
   const { messages, sendMessage, status } = useChat({
     id: chatId,
@@ -223,80 +255,74 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
     },
   });
 
-  const scrollToBottom = () => {
+  const scrollToBottom = () =>
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  const stripMetadata = (text: string) => {
-    return text.replace(/\n\n<!--METADATA:[\s\S]+?-->/, "");
-  };
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
+  // Set portal target once DOM is available
   useEffect(() => {
-    if (typeof document !== "undefined") {
-      setPortalTarget(document.body);
-    }
+    if (typeof document !== "undefined") setPortalTarget(document.body);
   }, []);
 
-  const loadSlashMenuItems = async (): Promise<ReferenceItem[]> => {
-    const items: ReferenceItem[] = [];
-    try {
-      setIsLoadingMenu(true);
-      const inspiration = await getContentItemsByCategory("inspiration");
-      inspiration.forEach((item) => {
-        items.push({
-          type: "inspiration",
-          icon: Lightbulb,
-          color: "#669CE4",
-          label: item.name,
-          data: item as ContentItem,
-        });
-      });
-
-      const library = await getContentItemsByCategory("content-library");
-      library.forEach((item) => {
-        items.push({
-          type: "library",
-          icon: FolderOpen,
-          color: "#3FB855",
-          label: item.name,
-          data: item as ContentItem,
-        });
-      });
-
-      const campaigns = await getAllCampaigns();
-      campaigns.forEach((campaign) => {
-        items.push({
-          type: "campaign",
-          icon: FileText,
-          color: "#8462CF",
-          label: campaign.caption
-            ? campaign.caption.substring(0, 50) + "..."
-            : "Untitled Campaign",
-          data: campaign as Campaign,
-        });
-      });
-      setSlashMenuItems(items);
-    } catch (error) {
-      console.error("Failed to load slash menu items:", error);
-    } finally {
-      setIsLoadingMenu(false);
-    }
-
-    return items;
-  };
-
+  // Load slash menu items on mount
   useEffect(() => {
-    loadSlashMenuItems();
+    const load = async () => {
+      try {
+        setIsLoadingMenu(true);
+        const items: ReferenceItem[] = [];
+
+        const inspiration = await getContentItemsByCategory("inspiration");
+        inspiration.forEach((item) => {
+          items.push({
+            type: "inspiration",
+            icon: Lightbulb,
+            color: "#669CE4",
+            label: item.name,
+            data: item as ContentItem,
+          });
+        });
+
+        const library = await getContentItemsByCategory("content-library");
+        library.forEach((item) => {
+          items.push({
+            type: "library",
+            icon: FolderOpen,
+            color: "#3FB855",
+            label: item.name,
+            data: item as ContentItem,
+          });
+        });
+
+        const campaigns = await getAllCampaigns();
+        campaigns.forEach((campaign) => {
+          items.push({
+            type: "campaign",
+            icon: FileText,
+            color: "#8462CF",
+            label: campaign.caption
+              ? campaign.caption.substring(0, 50) + "..."
+              : "Untitled Campaign",
+            data: campaign as Campaign,
+          });
+        });
+
+        setSlashMenuItems(items);
+      } catch (err) {
+        console.error("Failed to load slash menu items:", err);
+      } finally {
+        setIsLoadingMenu(false);
+      }
+    };
+
+    load();
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setInputValue(value);
-
     if (value.endsWith("/")) {
       setShowSlashMenu(true);
       setSelectedMenuIndex(0);
@@ -331,96 +357,48 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
   };
 
   const handleSelectReference = (item: ReferenceItem) => {
-    setInputValue(inputValue.slice(0, -1));
-    setSelectedReferences([...selectedReferences, item]);
+    setInputValue((prev) => prev.slice(0, -1)); // remove trailing '/'
+    setSelectedReferences((prev) => [...prev, item]);
     setShowSlashMenu(false);
     inputRef.current?.focus();
   };
 
   const removeReference = (index: number) => {
-    setSelectedReferences(selectedReferences.filter((_, i) => i !== index));
-  };
-
-  const formatReferenceContext = (references: ReferenceItem[]) => {
-    if (references.length === 0) return "";
-
-    let context = "\n\n---REFERENCED CONTENT---\n";
-    references.forEach((ref, index) => {
-      context +=
-        "\n[Reference " +
-        (index + 1) +
-        " - " +
-        ref.type +
-        "]: " +
-        ref.label +
-        "\n";
-      if ("caption" in ref.data) {
-        const campaign = ref.data as Campaign;
-        if (campaign.caption) {
-          context += "Caption: " + campaign.caption + "\n";
-        }
-        if (campaign.media) {
-          context += "Has media: Yes (" + campaign.media.type + ")\n";
-        }
-      } else {
-        const item = ref.data as ContentItem;
-        if (item.text) {
-          context += "Content: " + item.text + "\n";
-        }
-        if (item.type) {
-          context += "Type: " + item.type + "\n";
-        }
-        if (item.url) {
-          context += "Has media: Yes\n";
-        }
-      }
-    });
-    context += "---END REFERENCED CONTENT---\n\n";
-
-    return context;
+    setSelectedReferences((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSendMessage = async () => {
     const trimmedInput = inputValue.trim();
     if (!trimmedInput && selectedReferences.length === 0) return;
 
+    // Build reference context
     const referenceContext = formatReferenceContext(selectedReferences);
 
-    let messageText = inputValue + referenceContext;
-
+    // Append campaign context and model as hidden metadata
     const metadata = {
-      campaignContext: campaignContext,
+      campaignContext,
       model: selectedModel,
     };
-    const metadataString = JSON.stringify(metadata);
-    messageText += "\n\n<!--METADATA:" + metadataString + "-->";
+    const metadataString = `\n\n<!--METADATA:${JSON.stringify(metadata)}-->`;
 
-    console.log("🚀 [SEND] Sending message with metadata");
-    console.log("🚀 [SEND] Campaign ID:", campaignContext?.id);
-    console.log("🚀 [SEND] Model:", selectedModel);
-
+    const fullMessage = inputValue + referenceContext + metadataString;
     const isAnalysisCommand = trimmedInput
       .toLowerCase()
       .startsWith(ANALYSIS_TRIGGER);
-
-    if (isAnalysisCommand) {
-      setAnalysisPending(true);
-    }
+    if (isAnalysisCommand) setAnalysisPending(true);
 
     try {
-      await sendMessage({ text: messageText });
-    } catch (error) {
-      console.error("Failed to send message:", error);
+      await sendMessage({ text: fullMessage });
     } finally {
-      if (isAnalysisCommand) {
-        setAnalysisPending(false);
-      }
+      if (isAnalysisCommand) setAnalysisPending(false);
+      setInputValue("");
+      setSelectedReferences([]);
     }
-
-    setInputValue("");
-    setSelectedReferences([]);
   };
 
+  /***************
+   * Render
+   ***************/
   return (
     <div className="h-full flex flex-col relative">
       {portalTarget && activeMindmap
@@ -432,6 +410,7 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
             portalTarget
           )
         : null}
+
       <div className="px-6 py-4 border-b border-white/40">
         <h3 className="text-lg font-semibold text-gray-900">AI Assistant</h3>
       </div>
@@ -453,13 +432,14 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                   {message.role === "user" ? (
                     <div className="flex justify-end">
                       <div className="max-w-[85%] px-4 py-2 rounded-2xl text-sm bg-gray-900 text-white shadow-lg">
-                        <div className="whitespace-pre-wrap break-words overflow-wrap-break-word">
-                          {message.parts.map((part, index: number) =>
-                            part.type === "text" ? (
-                              <span key={index}>
-                                {stripMetadata(part.text)}
-                              </span>
-                            ) : null
+                        <div className="whitespace-pre-wrap wrap-break-word overflow-wrap-break-word">
+                          {(message as ChatMessage).parts.map(
+                            (part, index: number) =>
+                              part.type === "text" ? (
+                                <span key={index}>
+                                  {stripMetadata(part.text)}
+                                </span>
+                              ) : null
                           )}
                         </div>
                       </div>
@@ -470,74 +450,74 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                         Assistant
                       </div>
                       <div className="space-y-3">
-                        {message.parts.map((part, index) => {
+                        {(message as ChatMessage).parts.map((part, index) => {
                           if (part.type === "text") {
                             return (
                               <div
-                                key={"text-" + message.id + "-" + index}
-                                className="prose prose-sm max-w-none text-gray-900 break-words [&_a]:text-blue-600 [&_a:hover]:text-blue-800 [&_a]:underline [&_code]:text-gray-900 [&_strong]:text-gray-900 [&_em]:text-gray-900"
+                                key={`text-${message.id}-${index}`}
+                                className="prose prose-sm max-w-none"
                               >
                                 <ReactMarkdown
                                   remarkPlugins={[remarkGfm]}
                                   components={{
-                                    a: ({ ...props }) => (
+                                    a: (props) => (
                                       <a
                                         {...props}
-                                        className="!text-blue-600 hover:!text-blue-800 underline"
+                                        className="text-blue-600! hover:text-blue-800! underline"
                                       />
                                     ),
-                                    p: ({ ...props }) => (
+                                    p: (props) => (
                                       <p
                                         {...props}
-                                        className="break-words !text-gray-900"
+                                        className="wrap-break-word text-gray-900!"
                                       />
                                     ),
-                                    code: ({ ...props }) => (
+                                    code: (props) => (
                                       <code
                                         {...props}
-                                        className="!text-gray-900 !bg-gray-100 px-1 py-0.5 rounded"
+                                        className="text-gray-900! bg-gray-100! px-1 py-0.5 rounded"
                                       />
                                     ),
-                                    strong: ({ ...props }) => (
+                                    strong: (props) => (
                                       <strong
                                         {...props}
-                                        className="!text-gray-900 font-semibold"
+                                        className="text-gray-900! font-semibold"
                                       />
                                     ),
-                                    em: ({ ...props }) => (
+                                    em: (props) => (
                                       <em
                                         {...props}
-                                        className="!text-gray-900"
+                                        className="text-gray-900!"
                                       />
                                     ),
-                                    li: ({ ...props }) => (
+                                    li: (props) => (
                                       <li
                                         {...props}
-                                        className="!text-gray-900"
+                                        className="text-gray-900!"
                                       />
                                     ),
-                                    h1: ({ ...props }) => (
+                                    h1: (props) => (
                                       <h1
                                         {...props}
-                                        className="!text-gray-900"
+                                        className="text-gray-900!"
                                       />
                                     ),
-                                    h2: ({ ...props }) => (
+                                    h2: (props) => (
                                       <h2
                                         {...props}
-                                        className="!text-gray-900"
+                                        className="text-gray-900!"
                                       />
                                     ),
-                                    h3: ({ ...props }) => (
+                                    h3: (props) => (
                                       <h3
                                         {...props}
-                                        className="!text-gray-900"
+                                        className="text-gray-900!"
                                       />
                                     ),
-                                    h4: ({ ...props }) => (
+                                    h4: (props) => (
                                       <h4
                                         {...props}
-                                        className="!text-gray-900"
+                                        className="text-gray-900!"
                                       />
                                     ),
                                   }}
@@ -548,15 +528,18 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                             );
                           }
 
-                          if (isCompetitorAnalysisPart(part)) {
+                          if (
+                            isCompetitorAnalysisPart(part as CompetitorPart)
+                          ) {
+                            const competitorPart = part as CompetitorPart;
                             return (
                               <CompetitorAnalysisPreview
-                                key={"analysis-" + message.id + "-" + index}
-                                data={part.data}
+                                key={`analysis-${message.id}-${index}`}
+                                data={competitorPart.data}
                                 onOpen={() =>
                                   setActiveMindmap({
                                     messageId: message.id,
-                                    data: part.data,
+                                    data: competitorPart.data,
                                   })
                                 }
                               />
@@ -570,6 +553,7 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                   )}
                 </div>
               ))}
+
               {analysisPending && (
                 <div className="space-y-2">
                   <div className="text-xs font-semibold text-gray-600 mb-2">
@@ -581,18 +565,20 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
                   </div>
                 </div>
               )}
+
               {(status === "submitted" || status === "streaming") && (
                 <div className="space-y-2">
                   <div className="text-xs font-semibold text-gray-600 mb-3">
                     Assistant
                   </div>
                   <div className="space-y-2">
-                    <div className="h-3 bg-gray-200 rounded animate-pulse w-full"></div>
-                    <div className="h-3 bg-gray-200 rounded animate-pulse w-5/6"></div>
-                    <div className="h-3 bg-gray-200 rounded animate-pulse w-4/6"></div>
+                    <div className="h-3 bg-gray-200 rounded animate-pulse w-full" />
+                    <div className="h-3 bg-gray-200 rounded animate-pulse w-5/6" />
+                    <div className="h-3 bg-gray-200 rounded animate-pulse w-4/6" />
                   </div>
                 </div>
               )}
+
               <div ref={messagesEndRef} />
             </div>
           )}
@@ -615,19 +601,17 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
               <div className="py-2">
                 {slashMenuItems.map((item, index) => {
                   const Icon = item.icon;
+                  const isActive = index === selectedMenuIndex;
                   return (
                     <button
-                      key={index}
+                      key={`${item.type}-${index}`}
                       onClick={() => handleSelectReference(item)}
-                      className={
-                        "w-full px-4 py-2 flex items-center gap-3 text-left transition-colors " +
-                        (index === selectedMenuIndex
-                          ? "bg-blue-100"
-                          : "hover:bg-gray-100")
-                      }
+                      className={`w-full px-4 py-2 flex items-center gap-3 text-left transition-colors ${
+                        isActive ? "bg-blue-100" : "hover:bg-gray-100"
+                      }`}
                     >
                       <Icon
-                        className="w-4 h-4 flex-shrink-0"
+                        className="w-4 h-4 shrink-0"
                         style={{ color: item.color }}
                       />
                       <div className="flex-1 min-w-0">
@@ -652,15 +636,16 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
               const Icon = ref.icon;
               return (
                 <div
-                  key={index}
+                  key={`${ref.type}-${index}`}
                   className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs backdrop-blur-xl bg-white/60 border border-white/60"
-                  style={{ borderColor: ref.color + "40" }}
+                  style={{ borderColor: `${ref.color}40` }}
                 >
                   <Icon className="w-3 h-3" style={{ color: ref.color }} />
                   <span className="text-gray-900 font-medium">{ref.label}</span>
                   <button
                     onClick={() => removeReference(index)}
                     className="text-gray-500 hover:text-red-600"
+                    aria-label={`Remove ${ref.label}`}
                   >
                     ×
                   </button>
@@ -733,13 +718,14 @@ export function ChatbotPanel({ campaignContext }: ChatbotPanelProps) {
             </Select>
 
             <Button
-              onClick={() => void handleSendMessage()}
+              onClick={handleSendMessage}
               size="icon"
               disabled={
                 status !== "ready" ||
                 (!inputValue.trim() && selectedReferences.length === 0)
               }
               className="h-8 w-8 bg-gray-900 hover:bg-gray-800 shadow-lg text-white disabled:opacity-50"
+              aria-label="Send"
             >
               <Send className="w-4 h-4" />
             </Button>

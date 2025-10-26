@@ -28,23 +28,23 @@ export default function LibraryPage() {
   useEffect(() => {
     (async () => {
       try {
-        const data = await getContentItemsByCategory('content-library');
+        const data = await getContentItemsByCategory("content-library");
         setItems(data);
       } catch (error) {
-        console.error('Failed to load library:', error);
+        console.error("Failed to load library:", error);
       }
     })();
   }, []);
 
   const handleAdd = async (content: Omit<ContentItem, "id">) => {
     try {
-      const newItem = await createContentItem(content, 'content-library');
+      const newItem = await createContentItem(content, "content-library");
       if (newItem) {
         setItems((prev) => [newItem, ...prev]);
       }
     } catch (error) {
-      console.error('Failed to create library item:', error);
-      alert('Failed to add content. Please try again.');
+      console.error("Failed to create library item:", error);
+      alert("Failed to add content. Please try again.");
     }
   };
 
@@ -53,13 +53,13 @@ export default function LibraryPage() {
       await deleteContentItem(id);
       setItems((prev) => prev.filter((item) => item.id !== id));
     } catch (error) {
-      console.error('Failed to delete library item:', error);
-      alert('Failed to delete content. Please try again.');
+      console.error("Failed to delete library item:", error);
+      alert("Failed to delete content. Please try again.");
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+    <div className="min-h-screen bg-linear-to-br from-blue-50 via-purple-50 to-pink-50">
       {/* Header */}
       <header className="backdrop-blur-2xl bg-white/40 border-b border-white/40 shadow-lg">
         <div className="px-8 py-4 flex items-center justify-between">
