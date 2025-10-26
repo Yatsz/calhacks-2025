@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/adintelligence/Header";
 import { ChatbotPanel } from "@/components/adintelligence/ChatbotPanel";
@@ -9,12 +9,10 @@ import { ContentSection } from "@/components/adintelligence/ContentSection";
 import { ContentPreviewModal } from "@/components/adintelligence/ContentPreviewModal";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 
 interface ContentItem {
   id: string;
-  type: "image" | "video" | "pdf" | "text";
+  type: "image" | "video" | "pdf" | "text" | "link" | "campaign";
   name: string;
   url?: string;
   thumbnail?: string;
@@ -33,16 +31,7 @@ export default function AdIntelligencePage() {
     null
   );
   const [activeTab, setActiveTab] = useState("inspiration");
-  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(
-    null
-  );
-
-  useEffect(() => {
-    const campaignId = searchParams.get("edit");
-    if (campaignId) {
-      setEditingCampaignId(campaignId);
-    }
-  }, [searchParams]);
+  const editingCampaignId = searchParams.get('edit');
 
   const activeColor =
     contentTypes.find((t) => t.id === activeTab)?.color || "#669CE4";

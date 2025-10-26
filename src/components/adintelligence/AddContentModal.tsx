@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Upload, Type, Link as LinkIcon, Layout } from "lucide-react";
+import { Upload, Type, Link as LinkIcon, Layout, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { uploadFile, uploadVideoWithThumbnail } from "@/lib/storage";
 
 interface AddContentModalProps {
   open: boolean;
@@ -28,6 +30,7 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
   const [linkInput, setLinkInput] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [campaignCaption, setCampaignCaption] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
   const contentTypes = [
@@ -65,57 +68,40 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const type = file.type.startsWith("image/") ? "image" : "video";
-    const url = URL.createObjectURL(file);
+    setUploading(true);
+    try {
+      const type = file.type.startsWith("image/") ? "image" : "video";
 
-    if (type === "video") {
-      // Generate video thumbnail
-      const video = document.createElement("video");
-      video.preload = "metadata";
-      video.src = url;
-      
-      video.onloadedmetadata = () => {
-        // Seek to 1 second or 10% of duration, whichever is smaller
-        video.currentTime = Math.min(1, video.duration * 0.1);
-      };
-      
-      video.onseeked = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext("2d");
-        ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        const thumbnail = canvas.toDataURL("image/jpeg", 0.8);
+      if (type === "video") {
+        // Upload video with thumbnail generation
+        const { videoUrl, thumbnailUrl } = await uploadVideoWithThumbnail(file, 'content-library');
         
         onAdd({
           type,
           name: file.name,
-          url,
-          thumbnail,
+          url: videoUrl,
+          thumbnail: thumbnailUrl,
         });
+        toast.success("Video uploaded successfully!");
+      } else {
+        // Upload image
+        const url = await uploadFile(file, 'content-library');
         
-        handleClose();
-      };
-      
-      video.onerror = () => {
-        // If thumbnail generation fails, just use the video url
         onAdd({
           type,
           name: file.name,
           url,
           thumbnail: url,
         });
-        handleClose();
-      };
-    } else {
-      onAdd({
-        type,
-        name: file.name,
-        url,
-        thumbnail: url,
-      });
+        toast.success("Image uploaded successfully!");
+      }
+      
       handleClose();
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      toast.error('Failed to upload file. Please try again.');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -164,7 +150,7 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
       } else {
         // For non-TikTok links, just store the link
         onAdd({
-          type: "link" as any,
+          type: "link",
           name: nameInput || "Link Content",
           url: linkInput,
           text: linkInput,
@@ -173,7 +159,7 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
       }
     } else if (selectedType === "campaign") {
       onAdd({
-        type: "campaign" as any,
+        type: "campaign",
         name: nameInput || "Campaign",
         text: campaignCaption,
       });
@@ -237,14 +223,29 @@ export function AddContentModal({ open, onClose, onAdd }: AddContentModalProps) 
                     accept="image/*,video/*"
                     onChange={handleFileUpload}
                     className="hidden"
+                    disabled={uploading}
                   />
-                  <Upload className="w-12 h-12 text-gray-400 mb-4" />
-                  <p className="text-lg font-medium text-gray-900">
-                    Click to upload
-                  </p>
-                  <p className="text-sm text-gray-600 mt-2">
-                    Images or videos
-                  </p>
+                  {uploading ? (
+                    <>
+                      <Loader2 className="w-12 h-12 text-gray-400 mb-4 animate-spin" />
+                      <p className="text-lg font-medium text-gray-900">
+                        Uploading...
+                      </p>
+                      <p className="text-sm text-gray-600 mt-2">
+                        Please wait while we upload your file
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-12 h-12 text-gray-400 mb-4" />
+                      <p className="text-lg font-medium text-gray-900">
+                        Click to upload
+                      </p>
+                      <p className="text-sm text-gray-600 mt-2">
+                        Images or videos
+                      </p>
+                    </>
+                  )}
                 </label>
               </div>
             )}

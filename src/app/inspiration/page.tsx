@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { AddContentModal } from "@/components/adintelligence/AddContentModal";
 import { Plus, Trash2 } from "lucide-react";
+import {
+  getContentItemsByCategory,
+  createContentItem,
+  deleteContentItem,
+} from "@/lib/db";
 
 interface ContentItem {
   id: string;
@@ -17,38 +22,45 @@ interface ContentItem {
 }
 
 export default function InspirationPage() {
-  const [items, setItems] = useState<ContentItem[]>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('content-inspiration');
-      if (stored) {
-        try {
-          return JSON.parse(stored);
-        } catch (e) {
-          console.error('Failed to load inspiration:', e);
-        }
-      }
-    }
-    return [];
-  });
+  const [items, setItems] = useState<ContentItem[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const handleAdd = (content: Omit<ContentItem, "id">) => {
-    const newItem: ContentItem = {
-      ...content,
-      id: Date.now().toString() + Math.random(),
-    };
-    const updated = [...items, newItem];
-    setItems(updated);
-    localStorage.setItem('content-inspiration', JSON.stringify(updated));
+  useEffect(() => {
+    loadItems();
+  }, []);
+
+  const loadItems = async () => {
+    try {
+      setLoading(true);
+      const data = await getContentItemsByCategory('inspiration');
+      setItems(data);
+    } catch (error) {
+      console.error('Failed to load inspiration:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    const updated = items.filter((item) => item.id !== id);
-    setItems(updated);
-    if (updated.length === 0) {
-      localStorage.removeItem('content-inspiration');
-    } else {
-      localStorage.setItem('content-inspiration', JSON.stringify(updated));
+  const handleAdd = async (content: Omit<ContentItem, "id">) => {
+    try {
+      const newItem = await createContentItem(content, 'inspiration');
+      if (newItem) {
+        setItems((prev) => [newItem, ...prev]);
+      }
+    } catch (error) {
+      console.error('Failed to create inspiration:', error);
+      alert('Failed to add inspiration. Please try again.');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteContentItem(id);
+      setItems((prev) => prev.filter((item) => item.id !== id));
+    } catch (error) {
+      console.error('Failed to delete inspiration:', error);
+      alert('Failed to delete inspiration. Please try again.');
     }
   };
 

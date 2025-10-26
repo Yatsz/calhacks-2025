@@ -1,19 +1,17 @@
 import { useState, useEffect } from "react";
 import { Plus } from "lucide-react";
+import {
+  getContentItemsByCategory,
+  createContentItem,
+  deleteContentItem,
+  getAllCampaigns,
+} from "@/lib/db";
 
 import { ContentCard } from "./ContentCard";
 import { AddContentModal } from "./AddContentModal";
 
 import { ContentItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { syncContentWithPostman } from "@/lib/backgroundTasks";
-
-interface Campaign {
-  id: string;
-  media: { type: "image" | "video"; url: string; name?: string } | null;
-  caption: string;
-  createdAt: string;
-}
 
 interface ContentSectionProps {
   title: string;
@@ -30,46 +28,32 @@ export function ContentSection({
 }: ContentSectionProps) {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const storageKey = `content-${title.toLowerCase().replace(/\s+/g, "-")}`;
   const isPastCampaigns = title === "Past Campaigns";
+  const category = title === "Inspiration" ? "inspiration" : "content-library";
 
-  // Load from localStorage on mount and periodically check for updates
+  // Load from database on mount and periodically check for updates
   useEffect(() => {
-    const loadItems = () => {
-      if (isPastCampaigns) {
-        // For Past Campaigns, sync with the campaigns localStorage
-        const campaignsStored = localStorage.getItem("campaigns");
-        if (campaignsStored) {
-          try {
-            const campaigns: Campaign[] = JSON.parse(campaignsStored);
-            // Convert campaigns to ContentItem format
-            const campaignItems: ContentItem[] = campaigns.map(
-              (campaign: Campaign) => ({
-                id: campaign.id,
-                type: campaign.media?.type === "video" ? "video" : "image",
-                name: campaign.caption
-                  ? campaign.caption.substring(0, 50)
-                  : "Untitled Campaign",
-                url: campaign.media?.url,
-                thumbnail: campaign.media?.url,
-                text: campaign.caption,
-              })
-            );
-            setItems(campaignItems);
-          } catch (e) {
-            console.error("Failed to load campaigns:", e);
-          }
+    const loadItems = async () => {
+      try {
+        if (isPastCampaigns) {
+          // For Past Campaigns, sync with the campaigns database
+          const campaigns = await getAllCampaigns();
+          const campaignItems: ContentItem[] = campaigns.map((campaign) => ({
+            id: campaign.id,
+            type: (campaign.media?.type === 'video' ? 'video' : 'image') as 'image' | 'video',
+            name: campaign.caption ? campaign.caption.substring(0, 50) : 'Untitled Campaign',
+            url: campaign.media?.url,
+            thumbnail: campaign.media?.url,
+            text: campaign.caption,
+          }));
+          setItems(campaignItems);
+        } else {
+          // Regular content sections
+          const contentItems = await getContentItemsByCategory(category);
+          setItems(contentItems);
         }
-      } else {
-        // Regular content sections
-        const stored = localStorage.getItem(storageKey);
-        if (stored) {
-          try {
-            setItems(JSON.parse(stored));
-          } catch (e) {
-            console.error("Failed to load content:", e);
-          }
-        }
+      } catch (error) {
+        console.error('Failed to load content:', error);
       }
     };
 
@@ -77,32 +61,32 @@ export function ContentSection({
 
     // If it's Past Campaigns, set up an interval to check for updates
     if (isPastCampaigns) {
-      const interval = setInterval(loadItems, 1000); // Check every second
+      const interval = setInterval(loadItems, 3000); // Check every 3 seconds
       return () => clearInterval(interval);
     }
-  }, [storageKey, isPastCampaigns]);
+  }, [category, isPastCampaigns]);
 
-  // Save to localStorage whenever items change (but not for Past Campaigns since they sync from campaigns)
-  useEffect(() => {
-    if (!isPastCampaigns && items.length > 0) {
-      localStorage.setItem(storageKey, JSON.stringify(items));
-      syncContentWithPostman(items, title);
+  const handleAdd = async (content: Omit<ContentItem, "id">) => {
+    if (isPastCampaigns) return; // Can't add directly to past campaigns
+    
+    try {
+      const newItem = await createContentItem(content, category);
+      if (newItem) {
+        setItems((prev) => [newItem, ...prev]);
+      }
+    } catch (error) {
+      console.error('Failed to create content item:', error);
+      alert('Failed to add content. Please try again.');
     }
-  }, [items, storageKey, isPastCampaigns, title]);
-
-  const handleAdd = (content: Omit<ContentItem, "id">) => {
-    const newItem: ContentItem = {
-      ...content,
-      id: Date.now().toString() + Math.random(),
-    };
-    setItems((prev) => [...prev, newItem]);
   };
 
-  const handleDelete = (id: string) => {
-    const newItems = items.filter((item) => item.id !== id);
-    setItems(newItems);
-    if (newItems.length === 0) {
-      localStorage.removeItem(storageKey);
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteContentItem(id);
+      setItems((prev) => prev.filter((item) => item.id !== id));
+    } catch (error) {
+      console.error('Failed to delete content item:', error);
+      alert('Failed to delete content. Please try again.');
     }
   };
 

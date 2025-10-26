@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
+import { getAllCampaigns, deleteCampaign } from "@/lib/db";
 
 interface Campaign {
   id: string;
@@ -14,27 +15,33 @@ interface Campaign {
 }
 
 export default function CampaignsPage() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>(() => {
-    // Initialize state from localStorage
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('campaigns');
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          return [...parsed].reverse(); // Show newest first
-        } catch (e) {
-          console.error('Failed to load campaigns:', e);
-        }
-      }
-    }
-    return [];
-  });
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleDelete = (id: string) => {
-    const updated = campaigns.filter(c => c.id !== id);
-    setCampaigns(updated);
-    // Save back in original order (oldest first)
-    localStorage.setItem('campaigns', JSON.stringify([...updated].reverse()));
+  useEffect(() => {
+    loadCampaigns();
+  }, []);
+
+  const loadCampaigns = async () => {
+    try {
+      setLoading(true);
+      const data = await getAllCampaigns();
+      setCampaigns(data);
+    } catch (error) {
+      console.error('Failed to load campaigns:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteCampaign(id);
+      setCampaigns((prev) => prev.filter(c => c.id !== id));
+    } catch (error) {
+      console.error('Failed to delete campaign:', error);
+      alert('Failed to delete campaign. Please try again.');
+    }
   };
 
   return (
@@ -69,7 +76,11 @@ export default function CampaignsPage() {
 
       {/* Content */}
       <div className="container mx-auto px-8 pb-12">
-        {campaigns.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-20">
+            <p className="text-lg text-gray-600">Loading campaigns...</p>
+          </div>
+        ) : campaigns.length === 0 ? (
           <div className="text-center py-20">
             <p className="text-lg text-gray-600 mb-4">No campaigns saved yet</p>
             <Link href="/adintelligence">

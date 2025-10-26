@@ -9,6 +9,10 @@ import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  getContentItemsByCategory,
+  getAllCampaigns,
+} from "@/lib/db";
 
 interface ContentItem {
   id: string;
@@ -46,9 +50,8 @@ export function ChatbotPanel() {
   const [inputValue, setInputValue] = useState("");
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashMenuItems, setSlashMenuItems] = useState<ReferenceItem[]>([]);
-  const [selectedReferences, setSelectedReferences] = useState<ReferenceItem[]>(
-    []
-  );
+  const [selectedReferences, setSelectedReferences] = useState<ReferenceItem[]>([]);
+  const [selectedMenuIndex, setSelectedMenuIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -60,70 +63,87 @@ export function ChatbotPanel() {
     scrollToBottom();
   }, [messages]);
 
-  const loadSlashMenuItems = (): ReferenceItem[] => {
+  const loadSlashMenuItems = async (): Promise<ReferenceItem[]> => {
     const items: ReferenceItem[] = [];
-
-    // Load inspiration
-    const inspiration = localStorage.getItem("content-inspiration");
-    if (inspiration) {
-      const parsed = JSON.parse(inspiration);
-      parsed.forEach((item: ContentItem) => {
+    
+    try {
+      // Load inspiration
+      const inspiration = await getContentItemsByCategory('inspiration');
+      inspiration.forEach((item) => {
         items.push({
           type: "inspiration",
           icon: Lightbulb,
           color: "#669CE4",
           label: item.name,
-          data: item,
+          data: item as ContentItem,
         });
       });
-    }
 
-    // Load content library
-    const library = localStorage.getItem("content-content-library");
-    if (library) {
-      const parsed = JSON.parse(library);
-      parsed.forEach((item: ContentItem) => {
+      // Load content library
+      const library = await getContentItemsByCategory('content-library');
+      library.forEach((item) => {
         items.push({
           type: "library",
           icon: FolderOpen,
           color: "#3FB855",
           label: item.name,
-          data: item,
+          data: item as ContentItem,
         });
       });
-    }
 
-    // Load campaigns
-    const campaigns = localStorage.getItem("campaigns");
-    if (campaigns) {
-      const parsed = JSON.parse(campaigns);
-      parsed.forEach((campaign: Campaign) => {
+      // Load campaigns
+      const campaigns = await getAllCampaigns();
+      campaigns.forEach((campaign) => {
         items.push({
           type: "campaign",
           icon: FileText,
-          color: "#8462CF",
-          label: campaign.caption
-            ? campaign.caption.substring(0, 50) + "..."
-            : "Untitled Campaign",
-          data: campaign,
+          color: '#8462CF',
+          label: campaign.caption ? campaign.caption.substring(0, 50) + '...' : 'Untitled Campaign',
+          data: campaign as Campaign,
         });
       });
+    } catch (error) {
+      console.error('Failed to load slash menu items:', error);
     }
 
     return items;
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setInputValue(value);
 
     // Check if user typed "/"
-    if (value.endsWith("/")) {
-      const items = loadSlashMenuItems();
+    if (value.endsWith('/')) {
+      const items = await loadSlashMenuItems();
       setSlashMenuItems(items);
       setShowSlashMenu(true);
+      setSelectedMenuIndex(0);
     } else {
       setShowSlashMenu(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (showSlashMenu && slashMenuItems.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedMenuIndex((prev) => (prev + 1) % slashMenuItems.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedMenuIndex((prev) => (prev - 1 + slashMenuItems.length) % slashMenuItems.length);
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSelectReference(slashMenuItems[selectedMenuIndex]);
+        return;
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowSlashMenu(false);
+        return;
+      }
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
     }
   };
 
@@ -185,70 +205,100 @@ export function ChatbotPanel() {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative">
       <div className="px-6 py-4 border-b border-white/40">
         <h3 className="text-lg font-semibold text-gray-900">AI Assistant</h3>
       </div>
 
-      <ScrollArea className="flex-1 px-6 py-4">
-        {messages.length === 0 ? (
-          <div className="flex h-full items-center mt-70 justify-center">
-            <div className="text-center">
-              <p className="text-lg font-medium text-gray-900">
-                Let&apos;s build your campaign
-              </p>
+      <div className="flex-1 overflow-hidden">
+        <ScrollArea className="h-full px-6 py-4">
+          {messages.length === 0 ? (
+            <div className="flex h-full items-center mt-70 justify-center">
+              <div className="text-center">
+                <p className="text-lg font-medium text-gray-900">
+                  Let&apos;s build your campaign
+                </p>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {messages.map((message) => (
-              <div key={message.id} className="space-y-2">
-                {message.role === "user" ? (
-                  <div className="flex justify-end">
-                    <div className="max-w-[85%] px-4 py-2 rounded-2xl text-sm bg-gray-900 text-white shadow-lg">
-                      <div className="whitespace-pre-wrap break-words">
-                        {message.parts.map((part, index) =>
-                          part.type === "text" ? (
-                            <span key={index}>{part.text}</span>
-                          ) : null
-                        )}
+          ) : (
+            <div className="space-y-6">
+              {messages.map((message) => (
+                <div key={message.id} className="space-y-2">
+                  {message.role === "user" ? (
+                    <div className="flex justify-end">
+                      <div className="max-w-[85%] px-4 py-2 rounded-2xl text-sm bg-gray-900 text-white shadow-lg">
+                        <div className="whitespace-pre-wrap break-words">
+                          {message.parts.map((part, index) =>
+                            part.type === 'text' ? <span key={index}>{part.text}</span> : null
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="prose prose-sm max-w-none text-gray-900">
-                    <div className="text-xs font-semibold text-gray-600 mb-2">
-                      Assistant
+                  ) : (
+                    <div className="prose prose-sm max-w-none text-gray-900">
+                      <div className="text-xs font-semibold text-gray-600 mb-2">Assistant</div>
+                      {message.parts.map((part, index) =>
+                        part.type === 'text' ? (
+                          <ReactMarkdown key={index} remarkPlugins={[remarkGfm]}>
+                            {part.text}
+                          </ReactMarkdown>
+                        ) : null
+                      )}
                     </div>
-                    {message.parts.map((part, index) =>
-                      part.type === "text" ? (
-                        <ReactMarkdown key={index} remarkPlugins={[remarkGfm]}>
-                          {part.text}
-                        </ReactMarkdown>
-                      ) : null
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-            {(status === "submitted" || status === "streaming") && (
-              <div className="space-y-2">
-                <div className="text-xs font-semibold text-gray-600 mb-3">
-                  Assistant
+                  )}
                 </div>
+              ))}
+              {(status === 'submitted' || status === 'streaming') && (
                 <div className="space-y-2">
-                  <div className="h-3 bg-gray-200 rounded animate-pulse w-full"></div>
-                  <div className="h-3 bg-gray-200 rounded animate-pulse w-5/6"></div>
-                  <div className="h-3 bg-gray-200 rounded animate-pulse w-4/6"></div>
+                  <div className="text-xs font-semibold text-gray-600 mb-3">Assistant</div>
+                  <div className="space-y-2">
+                    <div className="h-3 bg-gray-200 rounded animate-pulse w-full"></div>
+                    <div className="h-3 bg-gray-200 rounded animate-pulse w-5/6"></div>
+                    <div className="h-3 bg-gray-200 rounded animate-pulse w-4/6"></div>
+                  </div>
                 </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+        </ScrollArea>
+      </div>
+
+      <div className="px-6 py-4 border-t border-white/40 relative">
+        {/* Slash Menu - Fixed position above input */}
+        {showSlashMenu && (
+          <div className="absolute bottom-full left-6 right-6 mb-2 backdrop-blur-2xl bg-white/90 border border-white/60 rounded-xl shadow-2xl max-h-64 overflow-y-auto z-50">
+            {slashMenuItems.length === 0 ? (
+              <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                No content available. Add inspiration, library items, or campaigns first.
+              </div>
+            ) : (
+              <div className="py-2">
+                {slashMenuItems.map((item, index) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => handleSelectReference(item)}
+                      className={`w-full px-4 py-2 flex items-center gap-3 text-left transition-colors ${
+                        index === selectedMenuIndex ? 'bg-white/80' : 'hover:bg-white/60'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 flex-shrink-0" style={{ color: item.color }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {item.label}
+                        </p>
+                        <p className="text-xs text-gray-500 capitalize">{item.type}</p>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
-            <div ref={messagesEndRef} />
           </div>
         )}
-      </ScrollArea>
 
-      <div className="px-6 py-4 border-t border-white/40">
         {/* Selected References */}
         {selectedReferences.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-2">
@@ -274,52 +324,12 @@ export function ChatbotPanel() {
           </div>
         )}
 
-        {/* Slash Menu */}
-        {showSlashMenu && (
-          <div className="mb-3 backdrop-blur-2xl bg-white/90 border border-white/60 rounded-xl shadow-xl max-h-64 overflow-y-auto">
-            {slashMenuItems.length === 0 ? (
-              <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                No content available. Add inspiration, library items, or
-                campaigns first.
-              </div>
-            ) : (
-              <div className="py-2">
-                {slashMenuItems.map((item, index) => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={index}
-                      onClick={() => handleSelectReference(item)}
-                      className="w-full px-4 py-2 hover:bg-white/60 flex items-center gap-3 text-left transition-colors"
-                    >
-                      <Icon
-                        className="w-4 h-4 flex-shrink-0"
-                        style={{ color: item.color }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {item.label}
-                        </p>
-                        <p className="text-xs text-gray-500 capitalize">
-                          {item.type}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
         <div className="flex gap-2">
           <Input
             ref={inputRef}
             value={inputValue}
             onChange={handleInputChange}
-            onKeyDown={(e) =>
-              e.key === "Enter" && !e.shiftKey && handleSendMessage()
-            }
+            onKeyDown={handleKeyDown}
             placeholder="Ask anything..."
             disabled={status !== "ready"}
             className="flex-1 backdrop-blur-xl bg-white/50 border-white/60 text-gray-900 placeholder:text-gray-500"
