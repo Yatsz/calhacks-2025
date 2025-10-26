@@ -40,20 +40,64 @@ export function ContentSection({
           const campaigns = await getAllCampaigns();
           const campaignItems: ContentItem[] = campaigns.map((campaign) => ({
             id: campaign.id,
-            type: (campaign.media?.type === 'video' ? 'video' : 'image') as 'image' | 'video',
-            name: campaign.caption ? campaign.caption.substring(0, 50) : 'Untitled Campaign',
+            type: campaign.media?.type === "video" ? "video" : "image",
+            name: campaign.caption
+              ? campaign.caption.substring(0, 50)
+              : "Untitled Campaign",
             url: campaign.media?.url,
             thumbnail: campaign.media?.url,
             text: campaign.caption,
           }));
           setItems(campaignItems);
+
+          // Ensure campaigns are in Chroma (background process)
+          campaignItems.forEach((item) => {
+            fetch("/api/process-content", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: item.id,
+                type: item.type,
+                url: item.url,
+                name: item.name,
+                category: "campaigns",
+                summary: item.text || item.name,
+              }),
+            }).catch((error) => {
+              console.warn(
+                `Failed to sync campaign ${item.id} to Chroma:`,
+                error
+              );
+            });
+          });
         } else {
           // Regular content sections
           const contentItems = await getContentItemsByCategory(category);
           setItems(contentItems);
+
+          // Ensure content items are in Chroma (background process)
+          contentItems.forEach((item) => {
+            fetch("/api/process-content", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: item.id,
+                type: item.type,
+                url: item.url,
+                name: item.name,
+                category,
+                summary: item.text || item.name,
+              }),
+            }).catch((error) => {
+              console.warn(
+                `Failed to sync content ${item.id} to Chroma:`,
+                error
+              );
+            });
+          });
         }
       } catch (error) {
-        console.error('Failed to load content:', error);
+        console.error("Failed to load content:", error);
       }
     };
 
@@ -68,15 +112,65 @@ export function ContentSection({
 
   const handleAdd = async (content: Omit<ContentItem, "id">) => {
     if (isPastCampaigns) return; // Can't add directly to past campaigns
-    
+
     try {
-      const newItem = await createContentItem(content, category);
+      // Step 1: Insert to Supabase immediately with empty text field
+      const newItem = await createContentItem(
+        { ...content, text: undefined },
+        category
+      );
+
       if (newItem) {
+        // Update UI immediately
         setItems((prev) => [newItem, ...prev]);
+
+        // Step 2: Process in background (fire and forget)
+        (async () => {
+          try {
+            let summary = content.text || "";
+
+            // Analyze media if it's an image or video
+            if (
+              (content.type === "image" || content.type === "video") &&
+              content.url
+            ) {
+              const response = await fetch("/api/analyze-media", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  url: content.url,
+                  type: content.type,
+                  name: content.name,
+                }),
+              });
+
+              if (response.ok) {
+                const data: { summary?: string } = await response.json();
+                summary = data.summary || "";
+              }
+            }
+
+            // Update Supabase and Chroma in background
+            await fetch("/api/process-content", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: newItem.id,
+                type: content.type,
+                url: content.url,
+                name: content.name,
+                category,
+                summary,
+              }),
+            });
+          } catch (error) {
+            console.warn("Background processing failed:", error);
+          }
+        })();
       }
     } catch (error) {
-      console.error('Failed to create content item:', error);
-      alert('Failed to add content. Please try again.');
+      console.error("Failed to create content item:", error);
+      alert("Failed to add content. Please try again.");
     }
   };
 
@@ -85,8 +179,8 @@ export function ContentSection({
       await deleteContentItem(id);
       setItems((prev) => prev.filter((item) => item.id !== id));
     } catch (error) {
-      console.error('Failed to delete content item:', error);
-      alert('Failed to delete content. Please try again.');
+      console.error("Failed to delete content item:", error);
+      alert("Failed to delete content. Please try again.");
     }
   };
 
