@@ -12,7 +12,7 @@ const ANTHROPIC_API_URL =
   process.env.CLAUDE_COMPETITOR_ENDPOINT ??
   "https://api.anthropic.com/v1/messages";
 const CLAUDE_MODEL =
-  process.env.CLAUDE_COMPETITOR_MODEL ?? "claude-4-5-sonnet-20241022";
+  process.env.CLAUDE_COMPETITOR_MODEL ?? "claude-sonnet-4-5";
 const CLAUDE_WEBSEARCH_BETA = (() => {
   const value = process.env.CLAUDE_WEBSEARCH_BETA?.trim();
   return value ? value : undefined;
