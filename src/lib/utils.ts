@@ -5,3 +5,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function getUserId(userIdParam?: string | null): string {
+  return userIdParam || "default_user";
+}

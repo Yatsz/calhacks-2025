@@ -1,9 +1,9 @@
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { convertToModelMessages, streamText, UIMessage } from 'ai';
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { convertToModelMessages, streamText, UIMessage } from "ai";
 
 // Create Anthropic client
 const anthropic = createAnthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || '',
+  apiKey: process.env.ANTHROPIC_API_KEY || "",
 });
 
 const SYSTEM_PROMPT = `You are an expert UGC (User Generated Content) campaign assistant. Your role is to help users create compelling, authentic, and effective UGC marketing campaigns.
@@ -38,21 +38,20 @@ export async function POST(req: Request) {
 
     // Stream the response using Vercel AI SDK
     const result = streamText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model: anthropic("claude-sonnet-4-5-20250929"),
       system: SYSTEM_PROMPT,
       messages: convertToModelMessages(messages),
     });
 
     return result.toUIMessageStreamResponse();
   } catch (error) {
-    console.error('Error in chat API:', error);
+    console.error("Error in chat API:", error);
     return new Response(
-      JSON.stringify({ error: 'Failed to process chat request' }),
+      JSON.stringify({ error: "Failed to process chat request" }),
       {
         status: 500,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { "Content-Type": "application/json" },
       }
     );
   }
 }
-
