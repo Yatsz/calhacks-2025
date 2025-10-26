@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogOverlay } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { initiateAuth, waitForConnection } from "@/lib/composio-auth";
+import { initiateAuth } from "@/lib/composio-auth";
 
 interface ConnectModalProps {
   isOpen: boolean;
@@ -49,14 +49,13 @@ const platforms = [
 
 export function ConnectModal({ isOpen, onClose }: ConnectModalProps) {
   const [connecting, setConnecting] = useState<string | null>(null);
-  const [connectedPlatforms, setConnectedPlatforms] = useState<Set<string>>(new Set());
 
   const handleConnect = async (platformId: string) => {
     setConnecting(platformId);
     
     try {
-      // Generate a unique user ID for this session
-      const externalUserId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Use a consistent user ID (you might want to get this from your auth system)
+      const externalUserId = 'user-session-123'; // Replace with actual user ID
       
       // Initiate Composio authentication
       const authResult = await initiateAuth(
@@ -69,24 +68,23 @@ export function ConnectModal({ isOpen, onClose }: ConnectModalProps) {
       }
       
       if (authResult.redirectUrl) {
-        // Open OAuth flow in a new window
-        const authWindow = window.open(
+        // Open OAuth flow in a popup window
+        const popup = window.open(
           authResult.redirectUrl,
           'composio-auth',
           'width=600,height=700,scrollbars=yes,resizable=yes'
         );
         
-        if (!authWindow) {
+        if (!popup) {
           throw new Error('Popup blocked. Please allow popups for this site.');
         }
         
-        // Wait for the OAuth flow to complete
+        // Check when the popup closes (user completes or cancels OAuth)
         const checkClosed = setInterval(() => {
-          if (authWindow.closed) {
+          if (popup.closed) {
             clearInterval(checkClosed);
-            // In a real implementation, you'd poll for the connection status
-            // or use webhooks to know when the connection is established
-            handleConnectionComplete(platformId);
+            // TODO: Poll for connection status or use webhooks
+            console.log('OAuth flow completed');
           }
         }, 1000);
       }
@@ -95,19 +93,6 @@ export function ConnectModal({ isOpen, onClose }: ConnectModalProps) {
       alert(`Failed to connect to ${platformId}. ${error instanceof Error ? error.message : 'Please try again.'}`);
     } finally {
       setConnecting(null);
-    }
-  };
-
-  const handleConnectionComplete = async (platformId: string) => {
-    try {
-      // Add the platform to connected set
-      setConnectedPlatforms(prev => new Set([...prev, platformId]));
-      
-      alert(`Successfully connected to ${platformId}!`);
-      onClose();
-    } catch (error) {
-      console.error('Connection completion failed:', error);
-      alert('Connection may have failed. Please try again.');
     }
   };
 
@@ -137,7 +122,7 @@ export function ConnectModal({ isOpen, onClose }: ConnectModalProps) {
                   
                   <Button
                     onClick={() => handleConnect(platform.id)}
-                    disabled={connecting === platform.id || connectedPlatforms.has(platform.id)}
+                    disabled={connecting === platform.id}
                     className="backdrop-blur-xl bg-white/60 hover:bg-white/80 text-gray-900 border-white/50 shadow-lg transition-all duration-200"
                     size="sm"
                   >
@@ -146,8 +131,6 @@ export function ConnectModal({ isOpen, onClose }: ConnectModalProps) {
                         <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
                         Connecting...
                       </div>
-                    ) : connectedPlatforms.has(platform.id) ? (
-                      "Connected"
                     ) : (
                       "Connect"
                     )}
